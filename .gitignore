@@ -1,0 +1,16 @@
+# Nix
+result
+result-*
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# State (shouldn't be in repo)
+state/

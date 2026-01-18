@@ -1,0 +1,54 @@
+#compdef pomo
+
+# Zsh completion for pomo command
+
+_pomo() {
+  local -a commands
+  commands=(
+    'start:Start a pomodoro session (work or break)'
+    'stop:Stop the current timer'
+    'pause:Pause the current timer'
+    'resume:Resume a paused timer'
+    'skip:Skip to the next phase (work/break)'
+    'status:Show current timer status'
+    'timer:Start a one-off countdown timer'
+    'stopwatch:Start a count-up stopwatch'
+    'history:Show today'"'"'s completed sessions'
+    'config:Show current configuration'
+    'test-notify:Test notifications and sounds'
+  )
+
+  local -a start_types
+  start_types=(
+    'work:Start a work session (25 min)'
+    'break:Start a short break (5 min)'
+    'long-break:Start a long break (15 min)'
+  )
+
+  local -a durations
+  durations=(
+    '5m:5 minutes'
+    '10m:10 minutes'
+    '15m:15 minutes'
+    '25m:25 minutes'
+    '30m:30 minutes'
+    '45m:45 minutes'
+    '1h:1 hour'
+    '1h30m:1 hour 30 minutes'
+    '2h:2 hours'
+  )
+
+  case "$words[2]" in
+    start)
+      _describe -t start_types 'session type' start_types
+      ;;
+    timer)
+      _describe -t durations 'duration' durations
+      ;;
+    *)
+      _describe -t commands 'pomo command' commands
+      ;;
+  esac
+}
+
+_pomo "$@"

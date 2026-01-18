@@ -1,0 +1,91 @@
+# Powerlevel10k custom segment for zsh-pomodoro-p10k
+# Add 'pomodoro' to POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS (or LEFT)
+
+function prompt_pomodoro() {
+  # Read current state
+  _pomo_read_state 2>/dev/null
+
+  # Don't show anything if no timer is running
+  if [[ "$POMO_STATUS" == "stopped" || -z "$POMO_STATUS" ]]; then
+    return
+  fi
+
+  local icon color time_display state_suffix
+
+  # Determine icon based on mode
+  case "$POMO_MODE" in
+    work)      icon="$POMODORO_ICON_WORK" ;;
+    break)     icon="$POMODORO_ICON_BREAK" ;;
+    timer)     icon="$POMODORO_ICON_TIMER" ;;
+    stopwatch) icon="$POMODORO_ICON_STOPWATCH" ;;
+    *)         icon="$POMODORO_ICON_TIMER" ;;
+  esac
+
+  # Handle paused state
+  if [[ "$POMO_STATUS" == "paused" ]]; then
+    icon="$POMODORO_ICON_PAUSED"
+    color=$POMODORO_COLOR_PAUSED
+    state_suffix="_PAUSED"
+  else
+    # Determine color based on mode and time remaining
+    case "$POMO_MODE" in
+      work)
+        local remaining=$(_pomo_remaining)
+        if [[ $remaining -le $POMODORO_WARNING_THRESHOLD ]]; then
+          color=$POMODORO_COLOR_WARNING
+          state_suffix="_WARNING"
+        else
+          color=$POMODORO_COLOR_WORK
+          state_suffix="_WORK"
+        fi
+        ;;
+      break)
+        local remaining=$(_pomo_remaining)
+        if [[ $remaining -le $POMODORO_WARNING_THRESHOLD ]]; then
+          color=$POMODORO_COLOR_WARNING
+          state_suffix="_WARNING"
+        else
+          color=$POMODORO_COLOR_BREAK
+          state_suffix="_BREAK"
+        fi
+        ;;
+      timer)
+        local remaining=$(_pomo_remaining)
+        if [[ $remaining -le $POMODORO_WARNING_THRESHOLD ]]; then
+          color=$POMODORO_COLOR_WARNING
+          state_suffix="_WARNING"
+        else
+          color=$POMODORO_COLOR_TIMER
+          state_suffix="_TIMER"
+        fi
+        ;;
+      stopwatch)
+        color=$POMODORO_COLOR_TIMER
+        state_suffix="_STOPWATCH"
+        ;;
+    esac
+  fi
+
+  # Calculate time display
+  if [[ "$POMO_MODE" == "stopwatch" ]]; then
+    time_display=$(_pomo_format_time $(_pomo_elapsed))
+  else
+    time_display=$(_pomo_format_time $(_pomo_remaining))
+
+    # Check for completion and handle it
+    if [[ "$POMO_STATUS" == "running" ]] && _pomo_is_completed; then
+      _pomo_handle_completion
+      return
+    fi
+  fi
+
+  # Output the segment
+  # -b: background color, -f: foreground color, -i: icon, -t: text, -s: state
+  p10k segment -b $color -f 0 -i "$icon " -t "$time_display" -s "$state_suffix"
+}
+
+# Instant prompt version - shows cached/static content during instant prompt
+# Since timer state can change, we just call the main function
+function instant_prompt_pomodoro() {
+  prompt_pomodoro
+}

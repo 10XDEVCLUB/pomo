@@ -1,5 +1,5 @@
 # pomo - A Pomodoro timer with shell integrations
-# https://github.com/briancorbinxyz/pomo
+# https://github.com/10xdevclub/pomo
 
 # Get the directory where this plugin is installed
 0="${ZERO:-${${0:#$ZSH_ARGZERO}:-${(%):-%N}}}"

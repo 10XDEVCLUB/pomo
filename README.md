@@ -19,14 +19,14 @@ A Pomodoro timer with shell integrations, notifications, sound alerts, and sessi
 ### Manual
 
 ```bash
-git clone https://github.com/briancorbinxyz/pomo.git ~/.zsh/plugins/pomo
+git clone https://github.com/10xdevclub/pomo.git ~/.zsh/plugins/pomo
 echo 'source ~/.zsh/plugins/pomo/pomo.plugin.zsh' >> ~/.zshrc
 ```
 
 ### Oh-My-Zsh
 
 ```bash
-git clone https://github.com/briancorbinxyz/pomo.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/pomo
+git clone https://github.com/10xdevclub/pomo.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/pomo
 ```
 
 Add to plugins in `~/.zshrc`:
@@ -37,20 +37,20 @@ plugins=(... pomo)
 ### Zinit
 
 ```zsh
-zinit light briancorbinxyz/pomo
+zinit light 10xdevclub/pomo
 ```
 
 ### Antigen
 
 ```zsh
-antigen bundle briancorbinxyz/pomo
+antigen bundle 10xdevclub/pomo
 ```
 
 ### Nix / Home-Manager
 
 Add to your `flake.nix` inputs:
 ```nix
-inputs.pomo.url = "github:briancorbinxyz/pomo";
+inputs.pomo.url = "github:10xdevclub/pomo";
 ```
 
 Then in your home-manager config:

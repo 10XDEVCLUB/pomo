@@ -28,7 +28,7 @@
 
             meta = with pkgs.lib; {
               description = "A Pomodoro timer with shell integrations";
-              homepage = "https://github.com/briancorbinxyz/pomo";
+              homepage = "https://github.com/10xdevclub/pomo";
               license = licenses.mit;
               platforms = platforms.all;
             };

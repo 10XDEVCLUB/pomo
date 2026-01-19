@@ -1,0 +1,119 @@
+#!/usr/bin/env zunit
+
+@setup {
+  load _support/bootstrap.zsh
+  pomo_test_cleanup
+}
+
+@teardown {
+  pomo_test_cleanup
+}
+
+@test 'write_state: creates state file' {
+  POMO_MODE="work"
+  POMO_STATUS="running"
+  POMO_START_TIME=1000
+  POMO_DURATION=1500
+
+  _pomo_write_state
+
+  local state_file="$(_pomo_state_file)"
+  assert "$state_file" is_file
+}
+
+@test 'write_state: persists all state variables' {
+  POMO_MODE="work"
+  POMO_STATUS="running"
+  POMO_START_TIME=1234567890
+  POMO_DURATION=1500
+  POMO_PAUSE_TIME=100
+  POMO_PAUSE_ELAPSED=50
+  POMO_CYCLE_COUNT=2
+  POMO_SESSION_WORK_COUNT=5
+
+  _pomo_write_state
+
+  local state_file="$(_pomo_state_file)"
+  local content=$(cat "$state_file")
+
+  assert "$content" contains 'POMO_MODE="work"'
+  assert "$content" contains 'POMO_STATUS="running"'
+  assert "$content" contains 'POMO_START_TIME="1234567890"'
+  assert "$content" contains 'POMO_DURATION="1500"'
+  assert "$content" contains 'POMO_CYCLE_COUNT="2"'
+  assert "$content" contains 'POMO_SESSION_WORK_COUNT="5"'
+}
+
+@test 'read_state: reads persisted state' {
+  pomo_set_state "work" "running" 1234567890 1500 0 0 3 7
+
+  # Clear in-memory state
+  POMO_MODE=""
+  POMO_STATUS=""
+  POMO_START_TIME=0
+
+  _pomo_read_state
+
+  assert "$POMO_MODE" equals "work"
+  assert "$POMO_STATUS" equals "running"
+  assert "$POMO_START_TIME" equals "1234567890"
+  assert "$POMO_DURATION" equals "1500"
+  assert "$POMO_CYCLE_COUNT" equals "3"
+  assert "$POMO_SESSION_WORK_COUNT" equals "7"
+}
+
+@test 'read_state: sets defaults when no state file exists' {
+  # Ensure no state file
+  rm -f "$(_pomo_state_file)"
+
+  _pomo_read_state
+
+  assert "$POMO_MODE" equals ""
+  assert "$POMO_STATUS" equals "stopped"
+  assert "$POMO_START_TIME" equals "0"
+  assert "$POMO_DURATION" equals "0"
+  assert "$POMO_CYCLE_COUNT" equals "0"
+}
+
+@test 'clear_state: removes state file' {
+  pomo_set_state "work" "running" 1000 1500
+
+  local state_file="$(_pomo_state_file)"
+  assert "$state_file" is_file
+
+  _pomo_clear_state
+
+  assert "$state_file" is_not_file
+}
+
+@test 'clear_state: resets in-memory state' {
+  POMO_MODE="work"
+  POMO_STATUS="running"
+  POMO_START_TIME=1000
+  POMO_DURATION=1500
+
+  _pomo_clear_state
+
+  assert "$POMO_MODE" equals ""
+  assert "$POMO_STATUS" equals "stopped"
+  assert "$POMO_START_TIME" equals "0"
+  assert "$POMO_DURATION" equals "0"
+}
+
+@test 'state_file: returns correct path' {
+  run _pomo_state_file
+  assert "$output" same_as "${POMODORO_STATE_DIR}/state"
+}
+
+@test 'history_file: returns correct path' {
+  run _pomo_history_file
+  assert "$output" same_as "${POMODORO_STATE_DIR}/history"
+}
+
+@test 'ensure_dirs: creates state directory' {
+  rm -rf "$POMODORO_STATE_DIR"
+
+  _pomo_ensure_dirs
+
+  assert "$POMODORO_STATE_DIR" is_dir
+}

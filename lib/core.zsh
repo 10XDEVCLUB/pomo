@@ -328,6 +328,10 @@ _pomo_skip() {
     # Log completed work session
     _pomo_log_session "work" "$POMO_DURATION"
 
+    # Save counts before starting break (which reads state)
+    local saved_cycle_count=$POMO_CYCLE_COUNT
+    local saved_work_count=$POMO_SESSION_WORK_COUNT
+
     # Determine break type
     if [[ $((POMO_CYCLE_COUNT % POMODORO_CYCLES_BEFORE_LONG)) -eq 0 ]]; then
       echo "Work session complete! Starting long break..."
@@ -336,10 +340,25 @@ _pomo_skip() {
       echo "Work session complete! Starting short break..."
       _pomo_start_break "short"
     fi
+
+    # Restore and save the counts
+    POMO_CYCLE_COUNT=$saved_cycle_count
+    POMO_SESSION_WORK_COUNT=$saved_work_count
+    _pomo_write_state
   elif [[ "$POMO_MODE" == "break" ]]; then
     _pomo_log_session "break" "$POMO_DURATION"
+
+    # Save counts before starting work (which reads state)
+    local saved_cycle_count=$POMO_CYCLE_COUNT
+    local saved_work_count=$POMO_SESSION_WORK_COUNT
+
     echo "Break complete! Starting work session..."
     _pomo_start_work
+
+    # Restore and save the counts
+    POMO_CYCLE_COUNT=$saved_cycle_count
+    POMO_SESSION_WORK_COUNT=$saved_work_count
+    _pomo_write_state
   else
     echo "Skip only works in pomodoro mode"
     return 1

@@ -14,3 +14,8 @@ result-*
 
 # State (shouldn't be in repo)
 state/
+
+# Testing
+.zunit-framework/
+.revolver/
+tests/_output/

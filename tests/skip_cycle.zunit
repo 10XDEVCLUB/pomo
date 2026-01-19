@@ -1,0 +1,168 @@
+#!/usr/bin/env zunit
+
+@setup {
+  load _support/bootstrap.zsh
+  pomo_test_cleanup
+  pomo_mock_time 1000000
+}
+
+@teardown {
+  pomo_test_cleanup
+  pomo_restore_time
+}
+
+@test 'skip: returns error when no timer running' {
+  run _pomo_skip
+  assert $state equals 1
+  assert "$output" contains "No timer running"
+}
+
+@test 'skip: from work starts short break' {
+  run _pomo_start_work
+  run _pomo_skip
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "break"
+  assert "$POMO_DURATION" equals "$POMODORO_SHORT_BREAK"
+}
+
+@test 'skip: from work increments cycle count' {
+  run _pomo_start_work
+  run _pomo_skip
+
+  _pomo_read_state
+  assert "$POMO_CYCLE_COUNT" equals "1"
+}
+
+@test 'skip: from work increments session work count' {
+  run _pomo_start_work
+  run _pomo_skip
+
+  _pomo_read_state
+  assert "$POMO_SESSION_WORK_COUNT" equals "1"
+}
+
+@test 'skip: from break starts work' {
+  _pomo_start_break >/dev/null
+  _pomo_skip >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "work"
+}
+
+@test 'skip: triggers long break after configured cycles' {
+  # Complete 3 work sessions (cycle count will be 3)
+  POMO_CYCLE_COUNT=3
+  POMO_SESSION_WORK_COUNT=3
+  _pomo_write_state
+
+  _pomo_start_work >/dev/null
+  _pomo_skip >/dev/null  # This should be the 4th cycle
+
+  _pomo_read_state
+  assert "$POMO_CYCLE_COUNT" equals "4"
+  assert "$POMO_DURATION" equals "$POMODORO_LONG_BREAK"
+}
+
+@test 'skip: short break after non-cycle-completing work' {
+  POMO_CYCLE_COUNT=1
+  _pomo_write_state
+
+  run _pomo_start_work
+  run _pomo_skip
+
+  _pomo_read_state
+  assert "$POMO_DURATION" equals "$POMODORO_SHORT_BREAK"
+}
+
+@test 'skip: logs work session to history' {
+  run _pomo_start_work
+  run _pomo_skip
+
+  local history_file="$(_pomo_history_file)"
+  assert "$history_file" is_file
+
+  local content=$(cat "$history_file")
+  assert "$content" contains "work"
+  assert "$content" contains "1500"
+}
+
+@test 'skip: logs break session to history' {
+  _pomo_start_break >/dev/null
+  _pomo_skip >/dev/null
+
+  local history_file="$(_pomo_history_file)"
+  local content=$(cat "$history_file")
+  assert "$content" contains "break"
+}
+
+@test 'skip: returns error for timer mode' {
+  _pomo_start_timer "5m" >/dev/null
+
+  run _pomo_skip
+  assert $state equals 1
+  assert "$output" contains "Skip only works in pomodoro mode"
+}
+
+@test 'skip: returns error for stopwatch mode' {
+  _pomo_start_stopwatch >/dev/null
+
+  run _pomo_skip
+  assert $state equals 1
+  assert "$output" contains "Skip only works in pomodoro mode"
+}
+
+@test 'skip: outputs work complete message' {
+  _pomo_start_work >/dev/null
+
+  run _pomo_skip
+  assert "$output" contains "Work session complete"
+  assert "$output" contains "break"
+}
+
+@test 'skip: outputs break complete message' {
+  _pomo_start_break >/dev/null
+
+  run _pomo_skip
+  assert "$output" contains "Break complete"
+  assert "$output" contains "work session"
+}
+
+# Multiple cycle test
+
+@test 'skip: full pomodoro cycle works correctly' {
+  # Work 1 -> Short Break
+  run _pomo_start_work
+  run _pomo_skip
+  _pomo_read_state
+  assert "$POMO_CYCLE_COUNT" equals "1"
+  assert "$POMO_MODE" equals "break"
+  assert "$POMO_DURATION" equals "$POMODORO_SHORT_BREAK"
+
+  # Break -> Work 2
+  run _pomo_skip
+  _pomo_read_state
+  assert "$POMO_MODE" equals "work"
+
+  # Work 2 -> Short Break
+  run _pomo_skip
+  _pomo_read_state
+  assert "$POMO_CYCLE_COUNT" equals "2"
+
+  # Break -> Work 3
+  run _pomo_skip
+
+  # Work 3 -> Short Break
+  run _pomo_skip
+  _pomo_read_state
+  assert "$POMO_CYCLE_COUNT" equals "3"
+
+  # Break -> Work 4
+  run _pomo_skip
+
+  # Work 4 -> Long Break (4th cycle complete)
+  run _pomo_skip
+  _pomo_read_state
+  assert "$POMO_CYCLE_COUNT" equals "4"
+  assert "$POMO_DURATION" equals "$POMODORO_LONG_BREAK"
+}

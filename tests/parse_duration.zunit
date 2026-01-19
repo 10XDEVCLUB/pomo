@@ -1,0 +1,87 @@
+#!/usr/bin/env zunit
+
+@setup {
+  load _support/bootstrap.zsh
+}
+
+@teardown {
+  pomo_test_cleanup
+}
+
+@test 'parse_duration: bare number returns seconds' {
+  run _pomo_parse_duration "300"
+  assert "$output" equals "300"
+  assert $state equals 0
+}
+
+@test 'parse_duration: minutes with m suffix' {
+  run _pomo_parse_duration "25m"
+  assert "$output" equals "1500"
+  assert $state equals 0
+}
+
+@test 'parse_duration: hours with h suffix' {
+  run _pomo_parse_duration "1h"
+  assert "$output" equals "3600"
+  assert $state equals 0
+}
+
+@test 'parse_duration: seconds with s suffix' {
+  run _pomo_parse_duration "90s"
+  assert "$output" equals "90"
+  assert $state equals 0
+}
+
+@test 'parse_duration: combined hours and minutes' {
+  run _pomo_parse_duration "1h30m"
+  assert "$output" equals "5400"
+  assert $state equals 0
+}
+
+@test 'parse_duration: combined hours minutes and seconds' {
+  run _pomo_parse_duration "1h30m45s"
+  assert "$output" equals "5445"
+  assert $state equals 0
+}
+
+@test 'parse_duration: combined minutes and seconds' {
+  run _pomo_parse_duration "5m30s"
+  assert "$output" equals "330"
+  assert $state equals 0
+}
+
+@test 'parse_duration: 2 hours' {
+  run _pomo_parse_duration "2h"
+  assert "$output" equals "7200"
+  assert $state equals 0
+}
+
+@test 'parse_duration: handles spaces in input' {
+  run _pomo_parse_duration "1 h 30 m"
+  assert "$output" equals "5400"
+  assert $state equals 0
+}
+
+@test 'parse_duration: invalid input returns 0 with error' {
+  run _pomo_parse_duration "invalid"
+  assert "$output" equals "0"
+  assert $state equals 1
+}
+
+@test 'parse_duration: empty string returns 0 with error' {
+  run _pomo_parse_duration ""
+  assert "$output" equals "0"
+  assert $state equals 1
+}
+
+@test 'parse_duration: zero value returns 0 with error' {
+  run _pomo_parse_duration "0m"
+  assert "$output" equals "0"
+  assert $state equals 1
+}
+
+@test 'parse_duration: large values work correctly' {
+  run _pomo_parse_duration "24h"
+  assert "$output" equals "86400"
+  assert $state equals 0
+}

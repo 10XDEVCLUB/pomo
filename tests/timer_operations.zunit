@@ -1,0 +1,240 @@
+#!/usr/bin/env zunit
+
+@setup {
+  load _support/bootstrap.zsh
+  pomo_test_cleanup
+  pomo_mock_time 1000000
+}
+
+@teardown {
+  pomo_test_cleanup
+  pomo_restore_time
+}
+
+# Start work tests
+
+@test 'start_work: sets mode to work' {
+  _pomo_start_work
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "work"
+}
+
+@test 'start_work: sets status to running' {
+  _pomo_start_work
+
+  _pomo_read_state
+  assert "$POMO_STATUS" equals "running"
+}
+
+@test 'start_work: sets correct duration' {
+  _pomo_start_work
+
+  _pomo_read_state
+  assert "$POMO_DURATION" equals "$POMODORO_WORK_DURATION"
+}
+
+@test 'start_work: sets start time' {
+  _pomo_start_work
+
+  _pomo_read_state
+  assert "$POMO_START_TIME" equals "1000000"
+}
+
+@test 'start_work: resets pause state' {
+  _pomo_start_work
+
+  _pomo_read_state
+  assert "$POMO_PAUSE_TIME" equals "0"
+  assert "$POMO_PAUSE_ELAPSED" equals "0"
+}
+
+@test 'start_work: outputs confirmation message' {
+  run _pomo_start_work
+  assert "$output" contains "Started pomodoro work session"
+  assert "$output" contains "25:00"
+}
+
+# Start break tests
+
+@test 'start_break: sets mode to break' {
+  _pomo_start_break
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "break"
+}
+
+@test 'start_break: short break sets correct duration' {
+  _pomo_start_break "short"
+
+  _pomo_read_state
+  assert "$POMO_DURATION" equals "$POMODORO_SHORT_BREAK"
+}
+
+@test 'start_break: long break sets correct duration' {
+  _pomo_start_break "long"
+
+  _pomo_read_state
+  assert "$POMO_DURATION" equals "$POMODORO_LONG_BREAK"
+}
+
+@test 'start_break: defaults to short break' {
+  _pomo_start_break
+
+  _pomo_read_state
+  assert "$POMO_DURATION" equals "$POMODORO_SHORT_BREAK"
+}
+
+@test 'start_break: outputs short break message' {
+  run _pomo_start_break "short"
+  assert "$output" contains "short break"
+}
+
+@test 'start_break: outputs long break message' {
+  run _pomo_start_break "long"
+  assert "$output" contains "long break"
+}
+
+# Start timer tests
+
+@test 'start_timer: sets mode to timer' {
+  _pomo_start_timer "10m"
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "timer"
+}
+
+@test 'start_timer: parses duration correctly' {
+  _pomo_start_timer "10m"
+
+  _pomo_read_state
+  assert "$POMO_DURATION" equals "600"
+}
+
+@test 'start_timer: invalid duration returns error' {
+  run _pomo_start_timer "invalid"
+  assert $state equals 1
+  assert "$output" contains "Invalid duration"
+}
+
+@test 'start_timer: outputs confirmation' {
+  run _pomo_start_timer "5m"
+  assert "$output" contains "Timer started"
+  assert "$output" contains "05:00"
+}
+
+# Start stopwatch tests
+
+@test 'start_stopwatch: sets mode to stopwatch' {
+  _pomo_start_stopwatch
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "stopwatch"
+}
+
+@test 'start_stopwatch: sets duration to 0' {
+  _pomo_start_stopwatch
+
+  _pomo_read_state
+  assert "$POMO_DURATION" equals "0"
+}
+
+@test 'start_stopwatch: outputs confirmation' {
+  run _pomo_start_stopwatch
+  assert "$output" contains "Stopwatch started"
+}
+
+# Stop tests
+
+@test 'stop: clears running timer' {
+  _pomo_start_work
+  _pomo_stop
+
+  _pomo_read_state
+  assert "$POMO_STATUS" equals "stopped"
+}
+
+@test 'stop: returns error when no timer running' {
+  run _pomo_stop
+  assert $state equals 1
+  assert "$output" contains "No timer running"
+}
+
+@test 'stop: outputs elapsed time' {
+  _pomo_start_work
+  pomo_mock_time 1000060  # 60 seconds later
+
+  run _pomo_stop
+  assert "$output" contains "Stopped after"
+  assert "$output" contains "01:00"
+}
+
+# Pause tests
+
+@test 'pause: changes status to paused' {
+  _pomo_start_work
+  _pomo_pause
+
+  _pomo_read_state
+  assert "$POMO_STATUS" equals "paused"
+}
+
+@test 'pause: records elapsed time' {
+  _pomo_start_work
+  pomo_mock_time 1000060  # 60 seconds later
+  _pomo_pause
+
+  _pomo_read_state
+  assert "$POMO_PAUSE_ELAPSED" equals "60"
+}
+
+@test 'pause: returns error when no timer running' {
+  run _pomo_pause
+  assert $state equals 1
+  assert "$output" contains "No timer running to pause"
+}
+
+@test 'pause: outputs paused time' {
+  _pomo_start_work
+  pomo_mock_time 1000300  # 5 minutes later
+
+  run _pomo_pause
+  assert "$output" contains "Timer paused at"
+  assert "$output" contains "05:00"
+}
+
+# Resume tests
+
+@test 'resume: changes status to running' {
+  _pomo_start_work
+  pomo_mock_time 1000060
+  _pomo_pause
+  pomo_mock_time 1000120
+  _pomo_resume
+
+  _pomo_read_state
+  assert "$POMO_STATUS" equals "running"
+}
+
+@test 'resume: updates start time' {
+  _pomo_start_work
+  pomo_mock_time 1000060
+  _pomo_pause
+  pomo_mock_time 1000120
+  _pomo_resume
+
+  _pomo_read_state
+  assert "$POMO_START_TIME" equals "1000120"
+}
+
+@test 'resume: returns error when not paused' {
+  run _pomo_resume
+  assert $state equals 1
+  assert "$output" contains "No timer paused to resume"
+}
+
+@test 'resume: returns error when running' {
+  _pomo_start_work
+  run _pomo_resume
+  assert $state equals 1
+}

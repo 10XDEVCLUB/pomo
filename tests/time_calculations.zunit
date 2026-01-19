@@ -1,0 +1,134 @@
+#!/usr/bin/env zunit
+
+@setup {
+  load _support/bootstrap.zsh
+  pomo_test_cleanup
+  pomo_mock_time 1000000
+}
+
+@teardown {
+  pomo_test_cleanup
+  pomo_restore_time
+}
+
+# Remaining time tests
+
+@test 'remaining: returns correct time for running timer' {
+  _pomo_start_work  # 1500 second duration
+  pomo_mock_time 1000060  # 60 seconds later
+
+  run _pomo_remaining
+  assert "$output" equals "1440"  # 1500 - 60
+}
+
+@test 'remaining: returns 0 when timer completed' {
+  _pomo_start_timer "1m"  # 60 second timer
+  pomo_mock_time 1000120  # 120 seconds later (past completion)
+
+  run _pomo_remaining
+  assert "$output" equals "0"
+}
+
+@test 'remaining: returns correct time when paused' {
+  _pomo_start_timer "5m"  # 300 seconds
+  pomo_mock_time 1000060  # 60 seconds elapsed
+  _pomo_pause
+  pomo_mock_time 1000300  # more time passes while paused
+
+  run _pomo_remaining
+  assert "$output" equals "240"  # 300 - 60 = 240
+}
+
+@test 'remaining: returns 0 with error when stopped' {
+  run _pomo_remaining
+  assert "$output" equals "0"
+  assert $state equals 1
+}
+
+@test 'remaining: accounts for prior pause time' {
+  _pomo_start_timer "5m"  # 300 seconds
+  pomo_mock_time 1000030  # 30 seconds elapsed
+  _pomo_pause
+
+  pomo_mock_time 1000100  # pause for a while
+  _pomo_resume
+
+  pomo_mock_time 1000130  # 30 more seconds after resume
+
+  run _pomo_remaining
+  assert "$output" equals "240"  # 300 - 30 - 30 = 240
+}
+
+# Elapsed time tests
+
+@test 'elapsed: returns correct time for running timer' {
+  _pomo_start_work
+  pomo_mock_time 1000300  # 5 minutes later
+
+  run _pomo_elapsed
+  assert "$output" equals "300"
+}
+
+@test 'elapsed: returns correct time when paused' {
+  _pomo_start_stopwatch
+  pomo_mock_time 1000120  # 2 minutes elapsed
+  _pomo_pause
+  pomo_mock_time 1000500  # more time passes while paused
+
+  run _pomo_elapsed
+  assert "$output" equals "120"  # Still 2 minutes
+}
+
+@test 'elapsed: returns 0 with error when stopped' {
+  run _pomo_elapsed
+  assert "$output" equals "0"
+  assert $state equals 1
+}
+
+@test 'elapsed: stopwatch counts up correctly' {
+  _pomo_start_stopwatch
+  pomo_mock_time 1003600  # 1 hour later
+
+  run _pomo_elapsed
+  assert "$output" equals "3600"
+}
+
+# Completion tests
+
+@test 'is_completed: returns true when timer finished' {
+  _pomo_start_timer "1m"
+  pomo_mock_time 1000120  # Past the 60 second duration
+
+  _pomo_is_completed
+  assert $state equals 0
+}
+
+@test 'is_completed: returns false when timer still running' {
+  _pomo_start_timer "5m" >/dev/null
+  pomo_mock_time 1000060  # Only 1 minute passed
+
+  run _pomo_is_completed
+  assert $state equals 1
+}
+
+@test 'is_completed: returns false for stopwatch' {
+  _pomo_start_stopwatch >/dev/null
+  pomo_mock_time 1100000  # A lot of time passed
+
+  run _pomo_is_completed
+  assert $state equals 1
+}
+
+@test 'is_completed: returns false when stopped' {
+  run _pomo_is_completed
+  assert $state equals 1
+}
+
+@test 'is_completed: returns false when paused' {
+  _pomo_start_timer "1m" >/dev/null
+  _pomo_pause >/dev/null
+  pomo_mock_time 1000120  # Would be completed if not paused
+
+  run _pomo_is_completed
+  assert $state equals 1
+}

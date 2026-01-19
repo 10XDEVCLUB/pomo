@@ -1,0 +1,93 @@
+#!/usr/bin/env zunit
+
+@setup {
+  load _support/bootstrap.zsh
+  pomo_test_cleanup
+  pomo_mock_time 1000000
+}
+
+@teardown {
+  pomo_test_cleanup
+  pomo_restore_time
+}
+
+@test 'log_session: creates history file' {
+  _pomo_log_session "work" "1500"
+
+  local history_file="$(_pomo_history_file)"
+  assert "$history_file" is_file
+}
+
+@test 'log_session: appends to history file' {
+  _pomo_log_session "work" "1500"
+  _pomo_log_session "break" "300"
+
+  local history_file="$(_pomo_history_file)"
+  local line_count=$(wc -l < "$history_file")
+
+  assert "$line_count" equals "2"
+}
+
+@test 'log_session: records correct format' {
+  _pomo_log_session "work" "1500"
+
+  local history_file="$(_pomo_history_file)"
+  local content=$(cat "$history_file")
+
+  # Format should be: timestamp|type|duration
+  assert "$content" matches "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\|work\|1500$"
+}
+
+@test 'log_session: records work type' {
+  _pomo_log_session "work" "1500"
+
+  local content=$(cat "$(_pomo_history_file)")
+  assert "$content" contains "|work|"
+}
+
+@test 'log_session: records break type' {
+  _pomo_log_session "break" "300"
+
+  local content=$(cat "$(_pomo_history_file)")
+  assert "$content" contains "|break|"
+}
+
+@test 'show_history: shows no history message when empty' {
+  rm -f "$(_pomo_history_file)"
+
+  run _pomo_show_history
+  assert "$output" contains "No history yet"
+}
+
+@test 'show_history: shows work session count' {
+  # Log some sessions with today's date
+  _pomo_log_session "work" "1500"
+  _pomo_log_session "work" "1500"
+  _pomo_log_session "break" "300"
+
+  run _pomo_show_history
+  assert "$output" contains "Work sessions: 2"
+}
+
+@test 'show_history: shows total work time' {
+  _pomo_log_session "work" "1500"
+  _pomo_log_session "work" "1500"
+
+  run _pomo_show_history
+  assert "$output" contains "Total work time: 50:00"
+}
+
+@test 'show_history: shows total break time' {
+  _pomo_log_session "break" "300"
+  _pomo_log_session "break" "900"
+
+  run _pomo_show_history
+  assert "$output" contains "Total break time: 20:00"
+}
+
+@test 'show_history: displays header' {
+  _pomo_log_session "work" "1500"
+
+  run _pomo_show_history
+  assert "$output" contains "Today's pomodoro sessions"
+}

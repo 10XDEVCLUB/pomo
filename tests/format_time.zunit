@@ -1,0 +1,69 @@
+#!/usr/bin/env zunit
+
+@setup {
+  load _support/bootstrap.zsh
+}
+
+@teardown {
+  pomo_test_cleanup
+}
+
+@test 'format_time: zero seconds' {
+  run _pomo_format_time 0
+  assert "$output" same_as "00:00"
+}
+
+@test 'format_time: seconds only' {
+  run _pomo_format_time 45
+  assert "$output" same_as "00:45"
+}
+
+@test 'format_time: one minute' {
+  run _pomo_format_time 60
+  assert "$output" same_as "01:00"
+}
+
+@test 'format_time: minutes and seconds' {
+  run _pomo_format_time 125
+  assert "$output" same_as "02:05"
+}
+
+@test 'format_time: 25 minutes (standard pomodoro)' {
+  run _pomo_format_time 1500
+  assert "$output" same_as "25:00"
+}
+
+@test 'format_time: under one hour' {
+  run _pomo_format_time 3599
+  assert "$output" same_as "59:59"
+}
+
+@test 'format_time: exactly one hour shows HH:MM:SS format' {
+  run _pomo_format_time 3600
+  assert "$output" same_as "1:00:00"
+}
+
+@test 'format_time: hours minutes and seconds' {
+  run _pomo_format_time 3725
+  assert "$output" same_as "1:02:05"
+}
+
+@test 'format_time: multiple hours' {
+  run _pomo_format_time 7384
+  assert "$output" same_as "2:03:04"
+}
+
+@test 'format_time: 24 hours' {
+  run _pomo_format_time 86400
+  assert "$output" same_as "24:00:00"
+}
+
+@test 'format_time: single digit seconds padded' {
+  run _pomo_format_time 5
+  assert "$output" same_as "00:05"
+}
+
+@test 'format_time: single digit minutes padded' {
+  run _pomo_format_time 300
+  assert "$output" same_as "05:00"
+}

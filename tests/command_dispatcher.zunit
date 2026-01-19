@@ -1,0 +1,231 @@
+#!/usr/bin/env zunit
+
+@setup {
+  load _support/bootstrap.zsh
+  pomo_test_cleanup
+  pomo_mock_time 1000000
+
+  # Source the main plugin to get the pomo command
+  # POMO_TEST_DIR is set in bootstrap.zsh and points to the plugin root
+  source "${POMO_TEST_DIR}/pomo.plugin.zsh"
+}
+
+@teardown {
+  pomo_test_cleanup
+  pomo_restore_time
+}
+
+# Start command tests
+
+@test 'pomo start: defaults to work' {
+  pomo start >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "work"
+  assert "$POMO_STATUS" equals "running"
+}
+
+@test 'pomo start work: starts work session' {
+  pomo start work >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "work"
+}
+
+@test 'pomo start break: starts short break' {
+  pomo start break >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "break"
+  assert "$POMO_DURATION" equals "$POMODORO_SHORT_BREAK"
+}
+
+@test 'pomo start long-break: starts long break' {
+  pomo start long-break >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "break"
+  assert "$POMO_DURATION" equals "$POMODORO_LONG_BREAK"
+}
+
+@test 'pomo start invalid: returns error' {
+  run pomo start invalid
+  assert $state equals 1
+  assert "$output" contains "Unknown start type"
+}
+
+# Stop command tests
+
+@test 'pomo stop: stops running timer' {
+  pomo start work >/dev/null
+  pomo stop >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_STATUS" equals "stopped"
+}
+
+# Pause/resume command tests
+
+@test 'pomo pause: pauses timer' {
+  pomo start work >/dev/null
+  pomo pause >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_STATUS" equals "paused"
+}
+
+@test 'pomo resume: resumes paused timer' {
+  pomo start work >/dev/null
+  pomo pause >/dev/null
+  pomo_mock_time 1000060
+  pomo resume >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_STATUS" equals "running"
+}
+
+# Skip command tests
+
+@test 'pomo skip: skips current phase' {
+  run pomo start work
+  run pomo skip
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "break"
+}
+
+# Timer command tests
+
+@test 'pomo timer: starts custom timer' {
+  pomo timer 10m >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "timer"
+  assert "$POMO_DURATION" equals "600"
+}
+
+@test 'pomo t: timer shorthand works' {
+  pomo t 5m >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "timer"
+  assert "$POMO_DURATION" equals "300"
+}
+
+@test 'pomo timer without duration: shows usage' {
+  run pomo timer
+  assert $state equals 1
+  assert "$output" contains "Usage:"
+}
+
+# Stopwatch command tests
+
+@test 'pomo stopwatch: starts stopwatch' {
+  pomo stopwatch >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "stopwatch"
+}
+
+@test 'pomo sw: stopwatch shorthand works' {
+  pomo sw >/dev/null
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "stopwatch"
+}
+
+# Status command tests
+
+@test 'pomo status: shows current status when running' {
+  pomo start work >/dev/null
+
+  run pomo status
+  assert "$output" contains "Mode: Work session"
+  assert "$output" contains "Status: running"
+}
+
+@test 'pomo s: status shorthand works' {
+  pomo start work >/dev/null
+
+  run pomo s
+  assert "$output" contains "Mode: Work session"
+}
+
+@test 'pomo status: shows no timer when stopped' {
+  run pomo status
+  assert "$output" contains "No timer running"
+}
+
+# History command tests
+
+@test 'pomo history: shows history' {
+  run pomo start work
+  run pomo skip  # Logs a work session
+
+  run pomo history
+  assert "$output" contains "Today's pomodoro sessions"
+  assert "$output" contains "Work sessions: 1"
+}
+
+@test 'pomo h: history shorthand works' {
+  # Need at least one session to show "pomodoro sessions" message
+  run pomo start work
+  run pomo skip
+
+  run pomo h
+  assert "$output" contains "pomodoro sessions"
+}
+
+# Config command tests
+
+@test 'pomo config: shows configuration' {
+  run pomo config
+  assert "$output" contains "Current configuration"
+  assert "$output" contains "Work duration"
+  assert "$output" contains "Short break"
+}
+
+@test 'pomo c: config shorthand works' {
+  run pomo c
+  assert "$output" contains "Current configuration"
+}
+
+# Help command tests
+
+@test 'pomo help: shows help' {
+  run pomo help
+  assert "$output" contains "pomo - Pomodoro timer"
+  assert "$output" contains "Commands:"
+}
+
+@test 'pomo --help: shows help' {
+  run pomo --help
+  assert "$output" contains "pomo - Pomodoro timer"
+}
+
+@test 'pomo -h: shows help' {
+  run pomo -h
+  assert "$output" contains "pomo - Pomodoro timer"
+}
+
+# No argument behavior tests
+
+@test 'pomo: shows status when timer running' {
+  pomo start work >/dev/null
+
+  run pomo
+  assert "$output" contains "Mode: Work session"
+}
+
+@test 'pomo: shows help when no timer running' {
+  run pomo
+  assert "$output" contains "pomo - Pomodoro timer"
+}
+
+# Unknown command tests
+
+@test 'pomo unknown: returns error' {
+  run pomo unknowncommand
+  assert $state equals 1
+  assert "$output" contains "Unknown command"
+}

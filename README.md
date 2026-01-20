@@ -133,18 +133,24 @@ export POMODORO_AUTO_START_WORK=false
 # Custom sounds (macOS)
 export POMODORO_SOUND_WORK_END="/System/Library/Sounds/Submarine.aiff"
 export POMODORO_SOUND_BREAK_END="/System/Library/Sounds/Glass.aiff"
+export POMODORO_SOUND_TIMER_END="/System/Library/Sounds/Ping.aiff"
 
 # Display icons
 export POMODORO_ICON_WORK="🍅"
 export POMODORO_ICON_BREAK="☕"
 export POMODORO_ICON_PAUSED="⏸"
 export POMODORO_ICON_TIMER="⏱"
+export POMODORO_ICON_STOPWATCH="⏱"
 
 # Colors (p10k color codes)
 export POMODORO_COLOR_WORK=1               # Red
 export POMODORO_COLOR_BREAK=2              # Green
 export POMODORO_COLOR_WARNING=3            # Yellow
 export POMODORO_COLOR_PAUSED=8             # Gray
+export POMODORO_COLOR_TIMER=4              # Blue
+
+# Warning threshold
+export POMODORO_WARNING_THRESHOLD=60       # Seconds before timer ends to show warning color
 ```
 
 ## How It Works

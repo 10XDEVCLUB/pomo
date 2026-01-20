@@ -145,3 +145,23 @@ EOF
 
 # Ensure state directory exists on load
 _pomo_ensure_dirs
+
+# Real-time prompt refresh (experimental)
+# Updates the timer display every second while idle at prompt
+if [[ "$POMODORO_REALTIME" == "true" ]]; then
+  # Only set TMOUT if not already set by user
+  [[ -z "$TMOUT" ]] && TMOUT=1
+
+  # Chain with existing TRAPALRM if present
+  if (( ${+functions[TRAPALRM]} )); then
+    functions[_pomo_orig_trapalrm]="${functions[TRAPALRM]}"
+    TRAPALRM() {
+      _pomo_orig_trapalrm "$@"
+      zle && zle reset-prompt
+    }
+  else
+    TRAPALRM() {
+      zle && zle reset-prompt
+    }
+  fi
+fi

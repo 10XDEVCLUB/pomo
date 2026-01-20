@@ -19,6 +19,7 @@
 # Behavior settings
 : ${POMODORO_AUTO_START_BREAK:=false}     # Auto-start break after work ends
 : ${POMODORO_AUTO_START_WORK:=false}      # Auto-start work after break ends
+: ${POMODORO_REALTIME:=false}             # Real-time countdown (refresh prompt every second)
 
 # Display settings (for p10k segment)
 : ${POMODORO_ICON_WORK:="🍅"}

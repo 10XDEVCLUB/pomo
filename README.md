@@ -129,6 +129,7 @@ export POMODORO_SOUND_ENABLED=true
 export POMODORO_NOTIFY_ENABLED=true
 export POMODORO_AUTO_START_BREAK=false
 export POMODORO_AUTO_START_WORK=false
+export POMODORO_REALTIME=true            # Update timer every second (experimental)
 
 # Custom sounds (macOS)
 export POMODORO_SOUND_WORK_END="/System/Library/Sounds/Submarine.aiff"
@@ -164,6 +165,15 @@ The Powerlevel10k segment reads this state and displays:
 - Paused: Gray background with pause icon
 
 When a timer completes, you'll receive a macOS notification and sound alert.
+
+### Real-time Countdown (Experimental)
+
+By default, the timer display only updates when the prompt is redrawn (after each command). Enable `POMODORO_REALTIME=true` for the countdown to update every second while idle at the prompt.
+
+This uses zsh's `TMOUT` and `TRAPALRM` mechanism. Known limitations:
+- Only updates while idle at the prompt, not during command execution
+- May interfere with other plugins using `TRAPALRM`
+- History navigation (up/down arrows) may occasionally behave unexpectedly
 
 ## Migrating from zsh-pomodoro-p10k
 

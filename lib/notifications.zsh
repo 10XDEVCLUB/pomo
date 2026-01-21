@@ -8,10 +8,11 @@ _pomo_notify() {
 
   [[ "$POMODORO_NOTIFY_ENABLED" != "true" ]] && return
 
+  # Run in subshell to avoid job completion messages
   if [[ -n "$subtitle" ]]; then
-    osascript -e "display notification \"$message\" with title \"$title\" subtitle \"$subtitle\"" 2>/dev/null &
+    (osascript -e "display notification \"$message\" with title \"$title\" subtitle \"$subtitle\"" &>/dev/null &)
   else
-    osascript -e "display notification \"$message\" with title \"$title\"" 2>/dev/null &
+    (osascript -e "display notification \"$message\" with title \"$title\"" &>/dev/null &)
   fi
 }
 
@@ -22,8 +23,8 @@ _pomo_play_sound() {
   [[ "$POMODORO_SOUND_ENABLED" != "true" ]] && return
   [[ ! -f "$sound_file" ]] && return
 
-  # Play in background so it doesn't block
-  afplay "$sound_file" 2>/dev/null &
+  # Run in subshell to avoid job completion messages
+  (afplay "$sound_file" &>/dev/null &)
 }
 
 # Combined alert (notification + sound) for different events

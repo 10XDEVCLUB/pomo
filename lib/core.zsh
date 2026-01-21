@@ -1,5 +1,12 @@
 # pomo core timer logic
 
+# Global variables for real-time segment display (used with p10k -e flag)
+typeset -g _POMO_SEGMENT_ICON=""
+typeset -g _POMO_SEGMENT_COLOR=""
+typeset -g _POMO_SEGMENT_TIME=""
+typeset -g _POMO_SEGMENT_STATE=""
+typeset -g _POMO_SEGMENT_VISIBLE=0
+
 # State file path
 _pomo_state_file() {
   echo "${POMODORO_STATE_DIR}/state"
@@ -490,4 +497,83 @@ _pomo_config() {
   echo "  Auto-start work:   $POMODORO_AUTO_START_WORK"
   echo ""
   echo "To customize, set these variables in your .zshrc before sourcing the plugin."
+}
+
+# Update segment display variables (called by TRAPALRM for real-time updates)
+_pomo_update_segment() {
+  _pomo_read_state 2>/dev/null
+
+  if [[ "$POMO_STATUS" == "stopped" || -z "$POMO_STATUS" ]]; then
+    _POMO_SEGMENT_VISIBLE=0
+    return
+  fi
+
+  _POMO_SEGMENT_VISIBLE=1
+
+  # Determine icon based on mode
+  case "$POMO_MODE" in
+    work)      _POMO_SEGMENT_ICON="$POMODORO_ICON_WORK" ;;
+    break)     _POMO_SEGMENT_ICON="$POMODORO_ICON_BREAK" ;;
+    timer)     _POMO_SEGMENT_ICON="$POMODORO_ICON_TIMER" ;;
+    stopwatch) _POMO_SEGMENT_ICON="$POMODORO_ICON_STOPWATCH" ;;
+    *)         _POMO_SEGMENT_ICON="$POMODORO_ICON_TIMER" ;;
+  esac
+
+  # Handle paused state
+  if [[ "$POMO_STATUS" == "paused" ]]; then
+    _POMO_SEGMENT_ICON="$POMODORO_ICON_PAUSED"
+    _POMO_SEGMENT_COLOR=$POMODORO_COLOR_PAUSED
+    _POMO_SEGMENT_STATE="_PAUSED"
+  else
+    # Determine color based on mode and time remaining
+    case "$POMO_MODE" in
+      work)
+        local remaining=$(_pomo_remaining)
+        if [[ $remaining -le $POMODORO_WARNING_THRESHOLD ]]; then
+          _POMO_SEGMENT_COLOR=$POMODORO_COLOR_WARNING
+          _POMO_SEGMENT_STATE="_WARNING"
+        else
+          _POMO_SEGMENT_COLOR=$POMODORO_COLOR_WORK
+          _POMO_SEGMENT_STATE="_WORK"
+        fi
+        ;;
+      break)
+        local remaining=$(_pomo_remaining)
+        if [[ $remaining -le $POMODORO_WARNING_THRESHOLD ]]; then
+          _POMO_SEGMENT_COLOR=$POMODORO_COLOR_WARNING
+          _POMO_SEGMENT_STATE="_WARNING"
+        else
+          _POMO_SEGMENT_COLOR=$POMODORO_COLOR_BREAK
+          _POMO_SEGMENT_STATE="_BREAK"
+        fi
+        ;;
+      timer)
+        local remaining=$(_pomo_remaining)
+        if [[ $remaining -le $POMODORO_WARNING_THRESHOLD ]]; then
+          _POMO_SEGMENT_COLOR=$POMODORO_COLOR_WARNING
+          _POMO_SEGMENT_STATE="_WARNING"
+        else
+          _POMO_SEGMENT_COLOR=$POMODORO_COLOR_TIMER
+          _POMO_SEGMENT_STATE="_TIMER"
+        fi
+        ;;
+      stopwatch)
+        _POMO_SEGMENT_COLOR=$POMODORO_COLOR_TIMER
+        _POMO_SEGMENT_STATE="_STOPWATCH"
+        ;;
+    esac
+  fi
+
+  # Calculate time display
+  if [[ "$POMO_MODE" == "stopwatch" ]]; then
+    _POMO_SEGMENT_TIME=$(_pomo_format_time $(_pomo_elapsed))
+  else
+    _POMO_SEGMENT_TIME=$(_pomo_format_time $(_pomo_remaining))
+
+    # Check for completion and handle it
+    if [[ "$POMO_STATUS" == "running" ]] && _pomo_is_completed; then
+      _pomo_handle_completion
+      _POMO_SEGMENT_VISIBLE=0
+    fi
+  fi
 }

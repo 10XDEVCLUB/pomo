@@ -152,16 +152,32 @@ if [[ "$POMODORO_REALTIME" == "true" ]]; then
   # Only set TMOUT if not already set by user
   [[ -z "$TMOUT" ]] && TMOUT=1
 
+  # Create a zle widget for refreshing the prompt
+  _pomo_refresh_widget() {
+    # Only refresh if a timer is actually running
+    _pomo_read_state 2>/dev/null
+    [[ "$POMO_STATUS" != "running" && "$POMO_STATUS" != "paused" ]] && return
+
+    # Update the segment display variables
+    _pomo_update_segment 2>/dev/null
+
+    # Force p10k to rebuild prompts, then reset display
+    # powerlevel9k_prepare_prompts is an internal p10k function that rebuilds prompt content
+    (( ${+functions[powerlevel9k_prepare_prompts]} )) && powerlevel9k_prepare_prompts
+    zle .reset-prompt && zle -R
+  }
+  zle -N _pomo_refresh_widget
+
   # Chain with existing TRAPALRM if present
   if (( ${+functions[TRAPALRM]} )); then
     functions[_pomo_orig_trapalrm]="${functions[TRAPALRM]}"
     TRAPALRM() {
       _pomo_orig_trapalrm "$@"
-      zle && zle reset-prompt
+      zle && zle _pomo_refresh_widget
     }
   else
     TRAPALRM() {
-      zle && zle reset-prompt
+      zle && zle _pomo_refresh_widget
     }
   fi
 fi

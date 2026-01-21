@@ -155,6 +155,9 @@ pomo_enable_realtime() {
   (( _POMO_REALTIME_ENABLED )) && return 0
   typeset -g _POMO_REALTIME_ENABLED=1
 
+  # Enable prompt substitution (required for variable expansion in prompts)
+  setopt prompt_subst
+
   # Set TMOUT if not already set
   [[ -z "$TMOUT" ]] && TMOUT=1
 

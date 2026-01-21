@@ -148,11 +148,17 @@ _pomo_ensure_dirs
 
 # Real-time prompt refresh (experimental)
 # Updates the timer display every second while idle at prompt
-if [[ "$POMODORO_REALTIME" == "true" ]]; then
-  # Only set TMOUT if not already set by user
+
+# Function to enable real-time mode - can be called after plugin loads
+pomo_enable_realtime() {
+  # Prevent double initialization
+  (( _POMO_REALTIME_ENABLED )) && return 0
+  typeset -g _POMO_REALTIME_ENABLED=1
+
+  # Set TMOUT if not already set
   [[ -z "$TMOUT" ]] && TMOUT=1
 
-  # Create a zle widget for refreshing the prompt
+  # Create the refresh widget if zle is available
   _pomo_refresh_widget() {
     # Only refresh if a timer is actually running
     _pomo_read_state 2>/dev/null
@@ -162,22 +168,36 @@ if [[ "$POMODORO_REALTIME" == "true" ]]; then
     _pomo_update_segment 2>/dev/null
 
     # Force p10k to rebuild prompts, then reset display
-    # powerlevel9k_prepare_prompts is an internal p10k function that rebuilds prompt content
     (( ${+functions[powerlevel9k_prepare_prompts]} )) && powerlevel9k_prepare_prompts
     zle .reset-prompt && zle -R
   }
   zle -N _pomo_refresh_widget
 
-  # Chain with existing TRAPALRM if present
-  if (( ${+functions[TRAPALRM]} )); then
+  # Set up TRAPALRM, chaining with any existing handler
+  if (( ${+functions[TRAPALRM]} )) && [[ "${functions[TRAPALRM]}" != *"_pomo_refresh_widget"* ]]; then
     functions[_pomo_orig_trapalrm]="${functions[TRAPALRM]}"
     TRAPALRM() {
       _pomo_orig_trapalrm "$@"
       zle && zle _pomo_refresh_widget
     }
-  else
+  elif ! (( ${+functions[TRAPALRM]} )); then
     TRAPALRM() {
       zle && zle _pomo_refresh_widget
     }
   fi
+
+  echo "Pomo real-time mode enabled (TMOUT=$TMOUT)"
+}
+
+# Auto-enable if POMODORO_REALTIME is already set
+if [[ "$POMODORO_REALTIME" == "true" ]]; then
+  pomo_enable_realtime
+else
+  # Check on first prompt if POMODORO_REALTIME was set after plugin load
+  _pomo_check_realtime() {
+    [[ "$POMODORO_REALTIME" == "true" ]] && pomo_enable_realtime
+    # Remove this hook after first check
+    precmd_functions=(${precmd_functions:#_pomo_check_realtime})
+  }
+  precmd_functions+=(_pomo_check_realtime)
 fi

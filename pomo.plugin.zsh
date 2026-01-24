@@ -189,7 +189,6 @@ pomo_enable_realtime() {
     }
   fi
 
-  echo "Pomo real-time mode enabled (TMOUT=$TMOUT)"
 }
 
 # Auto-enable if POMODORO_REALTIME is already set

@@ -170,8 +170,7 @@ pomo_enable_realtime() {
     # Update the segment display variables
     _pomo_update_segment 2>/dev/null
 
-    # Force p10k to rebuild prompts, then reset display
-    (( ${+functions[powerlevel9k_prepare_prompts]} )) && powerlevel9k_prepare_prompts
+    # Refresh the prompt display
     zle .reset-prompt && zle -R
   }
   zle -N _pomo_refresh_widget

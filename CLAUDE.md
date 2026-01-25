@@ -11,6 +11,30 @@ This file provides guidance to Claude Code when working with the pomo project.
 - macOS notifications and sounds
 - Session history tracking
 
+## Future Vision
+
+This Zsh plugin is the foundation for a larger ecosystem:
+- **pomo** (light mode) — Professional, data-first time tracking with DuckDB, SQL queries, integrations
+- **adhd** (dark mode) — ADHD-friendly focus tools with personality, games, and encouragement
+
+The architecture will evolve to:
+- Rust core library (`pomo-core`) shared across CLI, desktop app, and API
+- Event sourcing for sync and data integrity
+- Tauri desktop app (macOS/Windows/Linux)
+- Cloud sync (optional, paid tier)
+
+### Current Phase: Foundation
+
+The Zsh plugin serves as a trial ground for validating:
+- Event schema design
+- DuckDB storage integration
+- Context detection (git branch, directory)
+- Forgotten timer handling
+
+Once validated, core logic moves to Rust. This plugin becomes `pomo-lite` (lightweight Zsh-only option).
+
+See `CLAUDE.local.md` (gitignored) for project planning details.
+
 ## Project Structure
 
 ```

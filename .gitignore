@@ -19,3 +19,6 @@ state/
 .zunit-framework/
 .revolver/
 tests/_output/
+
+# Local planning (not for source control)
+CLAUDE.local.md

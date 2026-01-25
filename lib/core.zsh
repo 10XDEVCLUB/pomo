@@ -87,6 +87,8 @@ POMO_PAUSE_TIME="$POMO_PAUSE_TIME"
 POMO_PAUSE_ELAPSED="$POMO_PAUSE_ELAPSED"
 POMO_CYCLE_COUNT="$POMO_CYCLE_COUNT"
 POMO_SESSION_WORK_COUNT="$POMO_SESSION_WORK_COUNT"
+POMO_SESSION_ID="$POMO_SESSION_ID"
+POMO_TAGS="$POMO_TAGS"
 EOF
 }
 
@@ -103,6 +105,8 @@ _pomo_read_state() {
   POMO_PAUSE_ELAPSED=0
   POMO_CYCLE_COUNT=0
   POMO_SESSION_WORK_COUNT=0
+  POMO_SESSION_ID=""
+  POMO_TAGS="[]"
 
   if [[ -f "$state_file" ]]; then
     source "$state_file"
@@ -120,6 +124,8 @@ _pomo_clear_state() {
   POMO_DURATION=0
   POMO_PAUSE_TIME=0
   POMO_PAUSE_ELAPSED=0
+  POMO_SESSION_ID=""
+  POMO_TAGS="[]"
 }
 
 # Get current timestamp
@@ -194,6 +200,7 @@ _pomo_is_completed() {
 
 # Start a pomodoro work session
 _pomo_start_work() {
+  local tags="${1:-[]}"
   _pomo_read_state
 
   POMO_MODE="work"
@@ -202,8 +209,14 @@ _pomo_start_work() {
   POMO_DURATION=$POMODORO_WORK_DURATION
   POMO_PAUSE_TIME=0
   POMO_PAUSE_ELAPSED=0
+  POMO_SESSION_ID=$(_pomo_generate_uuid)
+  POMO_TAGS="$tags"
 
   _pomo_write_state
+
+  # Emit event (in background to not block prompt)
+  (_pomo_emit_session_started "$POMO_SESSION_ID" "pomodoro" "$POMO_DURATION" "$POMO_TAGS" &) 2>/dev/null
+
   echo "Started pomodoro work session ($(_pomo_format_time $POMO_DURATION))"
 }
 
@@ -218,6 +231,7 @@ _pomo_start_break() {
   POMO_START_TIME=$(_pomo_now)
   POMO_PAUSE_TIME=0
   POMO_PAUSE_ELAPSED=0
+  POMO_SESSION_ID=$(_pomo_generate_uuid)
 
   if [[ "$break_type" == "long" ]]; then
     POMO_DURATION=$POMODORO_LONG_BREAK
@@ -228,11 +242,16 @@ _pomo_start_break() {
   fi
 
   _pomo_write_state
+
+  # Emit event (in background to not block prompt)
+  (_pomo_emit_session_started "$POMO_SESSION_ID" "break" "$POMO_DURATION" "[]" &) 2>/dev/null
 }
 
 # Start a generic timer
 _pomo_start_timer() {
   local duration_str="$1"
+  shift
+  local tags="${1:-[]}"
   local duration=$(_pomo_parse_duration "$duration_str")
 
   if [[ $duration -eq 0 ]]; then
@@ -249,13 +268,21 @@ _pomo_start_timer() {
   POMO_PAUSE_ELAPSED=0
   POMO_CYCLE_COUNT=0
   POMO_SESSION_WORK_COUNT=0
+  POMO_SESSION_ID=$(_pomo_generate_uuid)
+  POMO_TAGS="$tags"
 
   _pomo_write_state
+
+  # Emit event (in background to not block prompt)
+  (_pomo_emit_session_started "$POMO_SESSION_ID" "timer" "$POMO_DURATION" "$POMO_TAGS" &) 2>/dev/null
+
   echo "Timer started: $(_pomo_format_time $duration)"
 }
 
 # Start stopwatch (count up)
 _pomo_start_stopwatch() {
+  local tags="${1:-[]}"
+
   POMO_MODE="stopwatch"
   POMO_STATUS="running"
   POMO_START_TIME=$(_pomo_now)
@@ -264,8 +291,15 @@ _pomo_start_stopwatch() {
   POMO_PAUSE_ELAPSED=0
   POMO_CYCLE_COUNT=0
   POMO_SESSION_WORK_COUNT=0
+  POMO_SESSION_ID=$(_pomo_generate_uuid)
+  POMO_TAGS="$tags"
 
   _pomo_write_state
+
+  # Emit event (in background to not block prompt)
+  # For stopwatch/tracking, planned_duration is null (0)
+  (_pomo_emit_session_started "$POMO_SESSION_ID" "tracking" "0" "$POMO_TAGS" &) 2>/dev/null
+
   echo "Stopwatch started"
 }
 
@@ -279,7 +313,14 @@ _pomo_stop() {
   fi
 
   local elapsed=$(_pomo_elapsed)
+  local session_id="$POMO_SESSION_ID"
+
   echo "Stopped after $(_pomo_format_time $elapsed)"
+
+  # Emit event (in background to not block prompt)
+  if [[ -n "$session_id" ]]; then
+    (_pomo_emit_session_ended "$session_id" "cancelled" "$elapsed" &) 2>/dev/null
+  fi
 
   _pomo_clear_state
 }
@@ -299,6 +340,12 @@ _pomo_pause() {
   POMO_STATUS="paused"
 
   _pomo_write_state
+
+  # Emit event (in background to not block prompt)
+  if [[ -n "$POMO_SESSION_ID" ]]; then
+    (_pomo_emit_session_paused "$POMO_SESSION_ID" &) 2>/dev/null
+  fi
+
   echo "Timer paused at $(_pomo_format_time $POMO_PAUSE_ELAPSED)"
 }
 
@@ -311,10 +358,19 @@ _pomo_resume() {
     return 1
   fi
 
-  POMO_START_TIME=$(_pomo_now)
+  local now=$(_pomo_now)
+  local pause_duration=$((now - POMO_PAUSE_TIME))
+
+  POMO_START_TIME=$now
   POMO_STATUS="running"
 
   _pomo_write_state
+
+  # Emit event (in background to not block prompt)
+  if [[ -n "$POMO_SESSION_ID" ]]; then
+    (_pomo_emit_session_resumed "$POMO_SESSION_ID" "$pause_duration" &) 2>/dev/null
+  fi
+
   echo "Timer resumed"
 }
 
@@ -376,10 +432,17 @@ _pomo_skip() {
 _pomo_handle_completion() {
   _pomo_read_state
 
+  local session_id="$POMO_SESSION_ID"
+
   if [[ "$POMO_MODE" == "work" ]]; then
     (( POMO_SESSION_WORK_COUNT++ ))
     (( POMO_CYCLE_COUNT++ ))
     _pomo_log_session "work" "$POMO_DURATION"
+
+    # Emit completion event
+    if [[ -n "$session_id" ]]; then
+      (_pomo_emit_session_ended "$session_id" "completed" "$POMO_DURATION" &) 2>/dev/null
+    fi
 
     # Notify
     _pomo_alert "work_end"
@@ -395,6 +458,12 @@ _pomo_handle_completion() {
     fi
   elif [[ "$POMO_MODE" == "break" ]]; then
     _pomo_log_session "break" "$POMO_DURATION"
+
+    # Emit completion event
+    if [[ -n "$session_id" ]]; then
+      (_pomo_emit_session_ended "$session_id" "completed" "$POMO_DURATION" &) 2>/dev/null
+    fi
+
     _pomo_alert "break_end"
 
     if [[ "$POMODORO_AUTO_START_WORK" == "true" ]]; then
@@ -403,6 +472,11 @@ _pomo_handle_completion() {
       _pomo_clear_state
     fi
   elif [[ "$POMO_MODE" == "timer" ]]; then
+    # Emit completion event
+    if [[ -n "$session_id" ]]; then
+      (_pomo_emit_session_ended "$session_id" "completed" "$POMO_DURATION" &) 2>/dev/null
+    fi
+
     _pomo_alert "timer_end"
     _pomo_clear_state
   fi

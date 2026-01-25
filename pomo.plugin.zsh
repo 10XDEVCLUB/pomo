@@ -1,5 +1,5 @@
 # pomo - A Pomodoro timer with shell integrations
-# https://github.com/10xdevclub/pomo
+# https://github.com/pomopomo-app/pomo-zsh
 
 # Get the directory where this plugin is installed
 0="${ZERO:-${${0:#$ZSH_ARGZERO}:-${(%):-%N}}}"
@@ -15,11 +15,32 @@ source "${_POMO_PLUGIN_DIR}/lib/core.zsh"
 # Source notification functions
 source "${_POMO_PLUGIN_DIR}/lib/notifications.zsh"
 
+# Source event sourcing (DuckDB integration)
+source "${_POMO_PLUGIN_DIR}/lib/events.zsh"
+
 # Add functions directory to fpath for autoloading
 fpath=("${_POMO_PLUGIN_DIR}/functions" $fpath)
 
 # Autoload the p10k segment function
 autoload -Uz prompt_pomodoro instant_prompt_pomodoro
+
+# Parse tags from arguments (e.g., +project +coding)
+_pomo_parse_tags() {
+  local tags="[]"
+  local tag_array=()
+
+  for arg in "$@"; do
+    if [[ "$arg" == +* ]]; then
+      tag_array+=("\"${arg#+}\"")
+    fi
+  done
+
+  if [[ ${#tag_array[@]} -gt 0 ]]; then
+    tags="[$(IFS=,; echo "${tag_array[*]}")]"
+  fi
+
+  echo "$tags"
+}
 
 # Main pomo command
 pomo() {
@@ -29,13 +50,21 @@ pomo() {
   case "$cmd" in
     start)
       local type="${1:-work}"
+      shift 2>/dev/null
+      local tags=$(_pomo_parse_tags "$@")
+
       case "$type" in
-        work)       _pomo_start_work ;;
+        work)       _pomo_start_work "$tags" ;;
         break)      _pomo_start_break "short" ;;
         long-break) _pomo_start_break "long" ;;
+        +*)
+          # If first arg is a tag, assume work session
+          tags=$(_pomo_parse_tags "$type" "$@")
+          _pomo_start_work "$tags"
+          ;;
         *)
           echo "Unknown start type: $type"
-          echo "Usage: pomo start [work|break|long-break]"
+          echo "Usage: pomo start [work|break|long-break] [+tag1 +tag2 ...]"
           return 1
           ;;
       esac
@@ -63,15 +92,19 @@ pomo() {
 
     timer|t)
       if [[ -z "$1" ]]; then
-        echo "Usage: pomo timer <duration>"
-        echo "Examples: pomo timer 10m, pomo timer 1h30m, pomo timer 90s"
+        echo "Usage: pomo timer <duration> [+tag1 +tag2 ...]"
+        echo "Examples: pomo timer 10m, pomo timer 1h30m +meeting"
         return 1
       fi
-      _pomo_start_timer "$1"
+      local duration="$1"
+      shift
+      local tags=$(_pomo_parse_tags "$@")
+      _pomo_start_timer "$duration" "$tags"
       ;;
 
-    stopwatch|sw)
-      _pomo_start_stopwatch
+    stopwatch|sw|track)
+      local tags=$(_pomo_parse_tags "$@")
+      _pomo_start_stopwatch "$tags"
       ;;
 
     history|h)
@@ -80,6 +113,37 @@ pomo() {
 
     config|c)
       _pomo_config
+      ;;
+
+    # New event-sourcing commands
+    query|q)
+      if [[ -z "$1" ]]; then
+        echo "Usage: pomo query \"SQL statement\""
+        echo "Example: pomo query \"SELECT * FROM events LIMIT 10\""
+        return 1
+      fi
+      _pomo_query "$1"
+      ;;
+
+    db)
+      _pomo_db_shell
+      ;;
+
+    today)
+      _pomo_query_today
+      ;;
+
+    recent)
+      _pomo_query_recent "${1:-10}"
+      ;;
+
+    migrate)
+      _pomo_migrate_history_to_events
+      ;;
+
+    context)
+      # Show current detected context
+      _pomo_detect_context | jq .
       ;;
 
     test-notify)
@@ -115,29 +179,45 @@ pomo - Pomodoro timer with shell integrations
 
 Usage: pomo <command> [options]
 
-Commands:
-  start [work|break|long-break]  Start a pomodoro session (default: work)
-  stop                           Stop the current timer
-  pause                          Pause the current timer
-  resume                         Resume a paused timer
-  skip                           Skip to the next phase
-  status, s                      Show current timer status
-  timer, t <duration>            Start a one-off countdown
-  stopwatch, sw                  Start a count-up stopwatch
-  history, h                     Show today's completed sessions
+Timer Commands:
+  start [work|break|long-break] [+tags]  Start a pomodoro session (default: work)
+  stop                                   Stop the current timer
+  pause                                  Pause the current timer
+  resume                                 Resume a paused timer
+  skip                                   Skip to the next phase
+  status, s                              Show current timer status
+  timer, t <duration> [+tags]            Start a one-off countdown
+  stopwatch, sw, track [+tags]           Start a count-up stopwatch/tracker
+
+Data Commands:
+  today                          Show today's sessions summary
+  recent [n]                     Show n most recent sessions (default: 10)
+  history, h                     Show today's history (legacy format)
+  query, q "SQL"                 Run a SQL query against the events database
+  db                             Open DuckDB shell for interactive queries
+  context                        Show current detected context (git, directory)
+  migrate                        Migrate legacy history file to events database
+
+Config Commands:
   config, c                      Show current configuration
   test-notify                    Test notifications and sounds
   help                           Show this help message
+
+Tags:
+  Add tags with + prefix: pomo start +project +coding
+  Tags are stored with sessions and can be queried
 
 Duration formats:
   25m, 1h, 1h30m, 90s, 300 (seconds)
 
 Examples:
   pomo start                     Start a 25-minute work session
+  pomo start +client-a +feature  Start work with tags
   pomo start break               Start a 5-minute break
-  pomo timer 10m                 Start a 10-minute timer
-  pomo pause                     Pause the current timer
-  pomo skip                      Skip to break (or next work session)
+  pomo timer 10m +meeting        Start a 10-minute timer with tag
+  pomo track +deep-work          Start tracking time (stopwatch)
+  pomo today                     Show today's session summary
+  pomo query "SELECT * FROM events WHERE type='session.started'"
 
 Add 'pomodoro' to POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS in your .p10k.zsh
 EOF

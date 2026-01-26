@@ -5,22 +5,34 @@
 #   ./run-tests.zsh           # Run all tests
 #   ./run-tests.zsh <file>    # Run specific test file
 #
-# Prerequisites:
-#   - zsh installed
-#   - zunit installed or .zunit-framework present
+# Dependencies are automatically installed if missing:
+#   - zunit (test framework)
+#   - revolver (spinner for zunit)
 #
-# Installing zunit:
-#   git clone https://github.com/zunit-zsh/zunit.git .zunit-framework
-#   cd .zunit-framework && zsh build.zsh
+# Optional dependencies for full test coverage:
+#   - duckdb (event sourcing tests)
+#   - jq (context detection tests)
 
 set -e
 
 SCRIPT_DIR="${0:A:h}"
 cd "$SCRIPT_DIR"
 
-# Add local dependencies to PATH
-if [[ -d ".revolver" ]]; then
-  export PATH="$SCRIPT_DIR/.revolver:$PATH"
+# Install revolver if missing (required by zunit)
+if [[ ! -d ".revolver" ]]; then
+  echo "Installing revolver (zunit dependency)..."
+  git clone --depth 1 https://github.com/molovo/revolver.git .revolver
+  echo ""
+fi
+
+# Add revolver to PATH
+export PATH="$SCRIPT_DIR/.revolver:$PATH"
+
+# Install zunit if missing
+if [[ ! -x ".zunit-framework/zunit" ]] && ! command -v zunit &>/dev/null; then
+  echo "Installing zunit test framework..."
+  git clone --depth 1 https://github.com/zunit-zsh/zunit.git .zunit-framework
+  echo ""
 fi
 
 # Find zunit
@@ -30,13 +42,24 @@ if [[ -x ".zunit-framework/zunit" ]]; then
 elif command -v zunit &>/dev/null; then
   ZUNIT="zunit"
 else
-  echo "Error: zunit not found"
-  echo ""
-  echo "Install zunit with:"
-  echo "  git clone https://github.com/zunit-zsh/zunit.git .zunit-framework"
-  echo "  cd .zunit-framework && zsh build.zsh"
+  echo "Error: zunit installation failed"
   exit 1
 fi
+
+# Check optional dependencies
+echo "Checking dependencies..."
+if command -v duckdb &>/dev/null; then
+  echo "  duckdb: $(duckdb --version 2>/dev/null | head -1)"
+else
+  echo "  duckdb: not installed (event tests will be skipped)"
+fi
+
+if command -v jq &>/dev/null; then
+  echo "  jq: $(jq --version 2>/dev/null)"
+else
+  echo "  jq: not installed (context tests will be skipped)"
+fi
+echo ""
 
 echo "Running pomo unit tests with zunit..."
 echo ""

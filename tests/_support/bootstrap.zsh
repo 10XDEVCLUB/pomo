@@ -27,6 +27,10 @@ export POMODORO_AUTO_START_WORK="false"
 source "${POMO_TEST_DIR}/lib/config.zsh"
 source "${POMO_TEST_DIR}/lib/core.zsh"
 source "${POMO_TEST_DIR}/lib/notifications.zsh"
+source "${POMO_TEST_DIR}/lib/events.zsh"
+
+# Set test database path
+export POMODORO_DB_PATH="${POMO_TEST_STATE_DIR}/test.duckdb"
 
 # Helper function to clean up test state between tests
 pomo_test_cleanup() {
@@ -42,6 +46,34 @@ pomo_test_cleanup() {
   POMO_PAUSE_ELAPSED=0
   POMO_CYCLE_COUNT=0
   POMO_SESSION_WORK_COUNT=0
+  POMO_SESSION_ID=""
+  POMO_TAGS="[]"
+}
+
+# Helper function to check if DuckDB is available
+pomo_has_duckdb() {
+  command -v duckdb &>/dev/null
+}
+
+# Helper function to check if jq is available
+pomo_has_jq() {
+  command -v jq &>/dev/null
+}
+
+# Helper to count events in test database
+pomo_count_events() {
+  local event_type="${1:-}"
+  if [[ -n "$event_type" ]]; then
+    duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT COUNT(*) FROM events WHERE type='$event_type'" | tail -1
+  else
+    duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT COUNT(*) FROM events" | tail -1
+  fi
+}
+
+# Helper to get last event of a type
+pomo_get_last_event() {
+  local event_type="$1"
+  duckdb "$POMODORO_DB_PATH" -json <<< "SELECT * FROM events WHERE type='$event_type' ORDER BY timestamp DESC LIMIT 1"
 }
 
 # Helper function to mock _pomo_now for time-dependent tests

@@ -263,40 +263,72 @@ _pomo_emit_session_resumed() {
 
 # Query helpers
 
-# Get today's sessions summary
-_pomo_query_today() {
+# Generic date range query helper
+_pomo_query_range() {
+  local start_date="$1"
+  local end_date="${2:-CURRENT_TIMESTAMP}"
+  local label="${3:-Sessions}"
+
   if ! command -v duckdb &>/dev/null || [[ ! -f "$POMODORO_DB_PATH" ]]; then
+    echo "DuckDB not available or database not initialized"
     return 1
   fi
 
-  duckdb "$POMODORO_DB_PATH" -markdown <<'EOF'
+  duckdb "$POMODORO_DB_PATH" -markdown <<EOF
 WITH session_starts AS (
   SELECT
-    json_extract_string(payload, '$.session_id') as session_id,
-    json_extract_string(payload, '$.session_type') as session_type,
+    json_extract_string(payload, '\$.session_id') as session_id,
+    json_extract_string(payload, '\$.session_type') as session_type,
     timestamp as started_at
   FROM events
   WHERE type = 'session.started'
-    AND timestamp >= CURRENT_DATE
+    AND timestamp >= $start_date
+    AND timestamp < $end_date
 ),
 session_ends AS (
   SELECT
-    json_extract_string(payload, '$.session_id') as session_id,
-    json_extract_string(payload, '$.end_reason') as end_reason,
-    CAST(json_extract(payload, '$.actual_duration_secs') AS INTEGER) as duration_secs
+    json_extract_string(payload, '\$.session_id') as session_id,
+    json_extract_string(payload, '\$.end_reason') as end_reason,
+    CAST(json_extract(payload, '\$.actual_duration_secs') AS INTEGER) as duration_secs
   FROM events
   WHERE type = 'session.ended'
-    AND timestamp >= CURRENT_DATE
+    AND timestamp >= $start_date
+    AND timestamp < $end_date
 )
 SELECT
   s.session_type as "Type",
   COUNT(*) as "Sessions",
-  COALESCE(SUM(e.duration_secs) / 60, 0) as "Minutes"
+  ROUND(COALESCE(SUM(e.duration_secs) / 60.0, 0), 0)::INTEGER as "Minutes",
+  ROUND(COALESCE(SUM(e.duration_secs) / 3600.0, 0), 1) as "Hours"
 FROM session_starts s
 LEFT JOIN session_ends e ON s.session_id = e.session_id
 GROUP BY s.session_type
 ORDER BY s.session_type;
 EOF
+}
+
+# Get today's sessions summary
+_pomo_query_today() {
+  echo "Today's sessions:"
+  _pomo_query_range "CURRENT_DATE" "CURRENT_DATE + INTERVAL 1 DAY"
+}
+
+# Get yesterday's sessions summary
+_pomo_query_yesterday() {
+  echo "Yesterday's sessions:"
+  _pomo_query_range "CURRENT_DATE - INTERVAL 1 DAY" "CURRENT_DATE"
+}
+
+# Get week-to-date sessions summary
+_pomo_query_wtd() {
+  echo "Week to date (since Monday):"
+  _pomo_query_range "date_trunc('week', CURRENT_DATE)" "CURRENT_DATE + INTERVAL 1 DAY"
+}
+
+# Get month-to-date sessions summary
+_pomo_query_mtd() {
+  echo "Month to date:"
+  _pomo_query_range "date_trunc('month', CURRENT_DATE)" "CURRENT_DATE + INTERVAL 1 DAY"
 }
 
 # Get recent sessions

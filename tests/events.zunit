@@ -1,0 +1,391 @@
+#!/usr/bin/env zunit
+
+@setup {
+  load _support/bootstrap.zsh
+  pomo_test_cleanup
+
+  # Skip all tests if DuckDB is not available
+  if ! pomo_has_duckdb; then
+    skip "DuckDB not installed"
+  fi
+
+  # Initialize test database
+  _pomo_init_db
+}
+
+@teardown {
+  pomo_test_cleanup
+}
+
+# =============================================================================
+# UUID Generation Tests
+# =============================================================================
+
+@test 'generate_uuid: produces valid UUID format' {
+  run _pomo_generate_uuid
+
+  # UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  assert "$output" matches '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+}
+
+@test 'generate_uuid: produces unique values' {
+  local uuid1=$(_pomo_generate_uuid)
+  local uuid2=$(_pomo_generate_uuid)
+
+  assert "$uuid1" is_not_empty
+  assert "$uuid2" is_not_empty
+  # UUIDs should be different
+  if [[ "$uuid1" == "$uuid2" ]]; then
+    echo "UUIDs are not unique: $uuid1 == $uuid2"
+    return 1
+  fi
+}
+
+# =============================================================================
+# Client ID Tests
+# =============================================================================
+
+@test 'get_client_id: creates client_id file' {
+  local client_id=$(_pomo_get_client_id)
+  local client_id_file="$(_pomo_client_id_file)"
+
+  assert "$client_id_file" is_file
+  assert "$client_id" is_not_empty
+}
+
+@test 'get_client_id: returns same ID on subsequent calls' {
+  local id1=$(_pomo_get_client_id)
+  local id2=$(_pomo_get_client_id)
+
+  assert "$id1" same_as "$id2"
+}
+
+# =============================================================================
+# Database Initialization Tests
+# =============================================================================
+
+@test 'init_db: creates database file' {
+  rm -f "$POMODORO_DB_PATH"
+
+  _pomo_init_db
+
+  assert "$POMODORO_DB_PATH" is_file
+}
+
+@test 'init_db: creates events table' {
+  run duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"
+
+  assert "$output" contains "events"
+}
+
+@test 'init_db: creates client_sequence table' {
+  run duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT name FROM sqlite_master WHERE type='table' AND name='client_sequence'"
+
+  assert "$output" contains "client_sequence"
+}
+
+# =============================================================================
+# Context Detection Tests
+# =============================================================================
+
+@test 'detect_context: returns valid JSON' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  run _pomo_detect_context
+
+  # Should be valid JSON (jq will fail if not)
+  echo "$output" | jq . > /dev/null
+  assert $state equals 0
+}
+
+@test 'detect_context: includes directory' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  local context=$(_pomo_detect_context)
+  local dir=$(echo "$context" | jq -r '.directory')
+
+  assert "$dir" is_not_empty
+  assert "$dir" same_as "$PWD"
+}
+
+@test 'detect_context: includes hostname' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  local context=$(_pomo_detect_context)
+  local host=$(echo "$context" | jq -r '.hostname')
+
+  assert "$host" is_not_empty
+}
+
+@test 'detect_context: includes timezone' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  local context=$(_pomo_detect_context)
+  local tz=$(echo "$context" | jq -r '.timezone')
+
+  assert "$tz" is_not_empty
+}
+
+@test 'detect_context: includes day_of_week' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  local context=$(_pomo_detect_context)
+  local dow=$(echo "$context" | jq -r '.day_of_week')
+
+  assert "$dow" matches '^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$'
+}
+
+@test 'detect_context: includes is_working_hours boolean' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  local context=$(_pomo_detect_context)
+  local working=$(echo "$context" | jq -r '.is_working_hours')
+
+  assert "$working" matches '^(true|false)$'
+}
+
+# =============================================================================
+# Event Emission Tests
+# =============================================================================
+
+@test 'emit_event: inserts event into database' {
+  local payload='{"test": true}'
+
+  _pomo_emit_event "test.event" "$payload"
+
+  local count=$(pomo_count_events "test.event")
+  assert "$count" equals "1"
+}
+
+@test 'emit_event: stores correct event type' {
+  _pomo_emit_event "session.test" '{"foo": "bar"}'
+
+  run duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT type FROM events WHERE type='session.test'"
+  assert "$output" contains "session.test"
+}
+
+@test 'emit_event: stores payload as JSON' {
+  _pomo_emit_event "test.payload" '{"key": "value", "number": 42}'
+
+  run duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT json_extract_string(payload, '\$.key') FROM events WHERE type='test.payload'"
+  assert "$output" contains "value"
+}
+
+@test 'emit_event: stores context' {
+  _pomo_emit_event "test.context" '{"test": true}'
+
+  run duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT json_extract_string(context, '\$.directory') FROM events WHERE type='test.context'"
+  assert "$output" contains "$PWD"
+}
+
+@test 'emit_event: increments sequence number' {
+  local client_id=$(_pomo_get_client_id)
+
+  _pomo_emit_event "test.seq1" '{"n": 1}'
+  _pomo_emit_event "test.seq2" '{"n": 2}'
+
+  local seq1=$(duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT sequence FROM events WHERE type='test.seq1'" | tail -1)
+  local seq2=$(duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT sequence FROM events WHERE type='test.seq2'" | tail -1)
+
+  assert "$seq2" equals "$((seq1 + 1))"
+}
+
+# =============================================================================
+# Session Event Tests
+# =============================================================================
+
+@test 'emit_session_started: creates correct event' {
+  local session_id=$(_pomo_generate_uuid)
+
+  _pomo_emit_session_started "$session_id" "pomodoro" "1500" '["test", "coding"]'
+
+  local count=$(pomo_count_events "session.started")
+  assert "$count" equals "1"
+
+  run duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT json_extract_string(payload, '\$.session_type') FROM events WHERE type='session.started'"
+  assert "$output" contains "pomodoro"
+}
+
+@test 'emit_session_started: stores tags correctly' {
+  local session_id=$(_pomo_generate_uuid)
+
+  _pomo_emit_session_started "$session_id" "pomodoro" "1500" '["project-x", "feature"]'
+
+  run duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT json_extract(payload, '\$.tags') FROM events WHERE type='session.started'"
+  assert "$output" contains "project-x"
+  assert "$output" contains "feature"
+}
+
+@test 'emit_session_ended: creates correct event' {
+  local session_id=$(_pomo_generate_uuid)
+
+  _pomo_emit_session_ended "$session_id" "completed" "1500"
+
+  local count=$(pomo_count_events "session.ended")
+  assert "$count" equals "1"
+
+  run duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT json_extract_string(payload, '\$.end_reason') FROM events WHERE type='session.ended'"
+  assert "$output" contains "completed"
+}
+
+@test 'emit_session_paused: creates correct event' {
+  local session_id=$(_pomo_generate_uuid)
+
+  _pomo_emit_session_paused "$session_id" "break time"
+
+  local count=$(pomo_count_events "session.paused")
+  assert "$count" equals "1"
+}
+
+@test 'emit_session_resumed: creates correct event' {
+  local session_id=$(_pomo_generate_uuid)
+
+  _pomo_emit_session_resumed "$session_id" "120"
+
+  local count=$(pomo_count_events "session.resumed")
+  assert "$count" equals "1"
+
+  run duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT json_extract(payload, '\$.pause_duration_secs') FROM events WHERE type='session.resumed'"
+  assert "$output" contains "120"
+}
+
+# =============================================================================
+# Integration Tests - Full Session Lifecycle
+# =============================================================================
+
+@test 'session lifecycle: start creates event with session_id' {
+  _pomo_start_work '["integration-test"]'
+
+  # Wait for background event to complete
+  sleep 1
+
+  local count=$(pomo_count_events "session.started")
+  assert "$count" equals "1"
+
+  # Verify session_id was stored in state
+  assert "$POMO_SESSION_ID" is_not_empty
+}
+
+@test 'session lifecycle: stop creates ended event' {
+  _pomo_start_work '[]'
+  sleep 1
+
+  local session_id="$POMO_SESSION_ID"
+
+  _pomo_stop
+  sleep 1
+
+  local count=$(pomo_count_events "session.ended")
+  assert "$count" equals "1"
+
+  run duckdb "$POMODORO_DB_PATH" -csv <<< "SELECT json_extract_string(payload, '\$.end_reason') FROM events WHERE type='session.ended'"
+  assert "$output" contains "cancelled"
+}
+
+@test 'session lifecycle: pause and resume create events' {
+  _pomo_start_work '[]'
+  sleep 1
+
+  _pomo_pause
+  sleep 1
+
+  local pause_count=$(pomo_count_events "session.paused")
+  assert "$pause_count" equals "1"
+
+  _pomo_resume
+  sleep 1
+
+  local resume_count=$(pomo_count_events "session.resumed")
+  assert "$resume_count" equals "1"
+
+  _pomo_stop
+}
+
+# =============================================================================
+# Tag Parsing Tests (from main plugin)
+# =============================================================================
+
+@test 'parse_tags: empty args returns empty array' {
+  source "${POMO_TEST_DIR}/pomo.plugin.zsh"
+
+  run _pomo_parse_tags
+  assert "$output" same_as "[]"
+}
+
+@test 'parse_tags: single tag' {
+  source "${POMO_TEST_DIR}/pomo.plugin.zsh"
+
+  run _pomo_parse_tags "+project"
+  assert "$output" same_as '["project"]'
+}
+
+@test 'parse_tags: multiple tags' {
+  source "${POMO_TEST_DIR}/pomo.plugin.zsh"
+
+  run _pomo_parse_tags "+project" "+coding" "+feature"
+  assert "$output" contains "project"
+  assert "$output" contains "coding"
+  assert "$output" contains "feature"
+}
+
+@test 'parse_tags: ignores non-tag arguments' {
+  source "${POMO_TEST_DIR}/pomo.plugin.zsh"
+
+  run _pomo_parse_tags "work" "+valid" "other"
+  assert "$output" same_as '["valid"]'
+}
+
+# =============================================================================
+# Date Range Query Tests
+# =============================================================================
+
+@test 'query_today: returns results without error' {
+  # Create a session so there's data
+  _pomo_emit_session_started "$(_pomo_generate_uuid)" "pomodoro" "1500" '[]'
+
+  run _pomo_query_today
+
+  assert $state equals 0
+  assert "$output" contains "Today's sessions"
+}
+
+@test 'query_yesterday: returns results without error' {
+  run _pomo_query_yesterday
+
+  assert $state equals 0
+  assert "$output" contains "Yesterday's sessions"
+}
+
+@test 'query_wtd: returns results without error' {
+  run _pomo_query_wtd
+
+  assert $state equals 0
+  assert "$output" contains "Week to date"
+}
+
+@test 'query_mtd: returns results without error' {
+  run _pomo_query_mtd
+
+  assert $state equals 0
+  assert "$output" contains "Month to date"
+}
+
+@test 'query_range: includes hours column' {
+  _pomo_emit_session_started "$(_pomo_generate_uuid)" "pomodoro" "1500" '[]'
+
+  run _pomo_query_today
+
+  assert "$output" contains "Hours"
+}

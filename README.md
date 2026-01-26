@@ -19,14 +19,14 @@ A Pomodoro timer with shell integrations, notifications, sound alerts, and sessi
 ### Manual
 
 ```bash
-git clone https://github.com/10xdevclub/pomo.git ~/.zsh/plugins/pomo
+git clone https://github.com/pomopomo-app/pomo-zsh.git ~/.zsh/plugins/pomo
 echo 'source ~/.zsh/plugins/pomo/pomo.plugin.zsh' >> ~/.zshrc
 ```
 
 ### Oh-My-Zsh
 
 ```bash
-git clone https://github.com/10xdevclub/pomo.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/pomo
+git clone https://github.com/pomopomo-app/pomo-zsh.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/pomo
 ```
 
 Add to plugins in `~/.zshrc`:
@@ -37,20 +37,20 @@ plugins=(... pomo)
 ### Zinit
 
 ```zsh
-zinit light 10xdevclub/pomo
+zinit light pomopomo-app/pomo-zsh
 ```
 
 ### Antigen
 
 ```zsh
-antigen bundle 10xdevclub/pomo
+antigen bundle pomopomo-app/pomo-zsh
 ```
 
 ### Nix / Home-Manager
 
 Add to your `flake.nix` inputs:
 ```nix
-inputs.pomo.url = "github:10xdevclub/pomo";
+inputs.pomo.url = "github:pomopomo-app/pomo-zsh";
 ```
 
 Then in your home-manager config:
@@ -178,6 +178,48 @@ This uses zsh's `TMOUT` and `TRAPALRM` mechanism. Known limitations:
 ## Migrating from zsh-pomodoro-p10k
 
 If you previously used `zsh-pomodoro-p10k`, your state and history files will be automatically migrated to the new location on first load.
+
+## Development
+
+### Running Tests
+
+```bash
+./run-tests.zsh              # Run all tests
+./run-tests.zsh tests/core.zunit  # Run specific test file
+```
+
+Test framework dependencies (zunit, revolver) are automatically installed on first run.
+
+### Optional Dependencies
+
+For full test coverage, install:
+
+- **duckdb** - Required for event sourcing tests
+  ```bash
+  brew install duckdb
+  ```
+
+- **jq** - Required for context detection tests
+  ```bash
+  brew install jq
+  ```
+
+Tests that require missing dependencies are automatically skipped.
+
+### Test Structure
+
+```
+tests/
+├── _support/
+│   └── bootstrap.zsh     # Test setup and helpers
+├── core.zunit            # Core timer logic tests
+├── command_dispatcher.zunit  # Command parsing tests
+├── duration_parsing.zunit    # Duration format tests
+├── events.zunit          # DuckDB event sourcing tests
+├── history.zunit         # Session history tests
+├── notifications.zunit   # Notification tests
+└── state.zunit           # State management tests
+```
 
 ## License
 

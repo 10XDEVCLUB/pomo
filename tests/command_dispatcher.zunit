@@ -18,7 +18,11 @@
 # Start command tests
 
 @test 'pomo start: defaults to work' {
-  pomo start >/dev/null
+  run pomo start
+
+  # Check command output
+  assert $state equals 0
+  assert "$output" contains "Started"
 
   _pomo_read_state
   assert "$POMO_MODE" equals "work"

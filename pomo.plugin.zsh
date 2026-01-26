@@ -133,6 +133,18 @@ pomo() {
       _pomo_query_today
       ;;
 
+    yesterday|yd)
+      _pomo_query_yesterday
+      ;;
+
+    week|wtd)
+      _pomo_query_wtd
+      ;;
+
+    month|mtd)
+      _pomo_query_mtd
+      ;;
+
     recent)
       _pomo_query_recent "${1:-10}"
       ;;
@@ -191,6 +203,9 @@ Timer Commands:
 
 Data Commands:
   today                          Show today's sessions summary
+  yesterday, yd                  Show yesterday's sessions summary
+  week, wtd                      Show week-to-date summary (since Monday)
+  month, mtd                     Show month-to-date summary
   recent [n]                     Show n most recent sessions (default: 10)
   history, h                     Show today's history (legacy format)
   query, q "SQL"                 Run a SQL query against the events database

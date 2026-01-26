@@ -265,8 +265,9 @@ pomo_enable_realtime() {
     # Update the segment display variables
     _pomo_update_segment 2>/dev/null
 
-    # Refresh the prompt display
-    zle .reset-prompt && zle -R
+    # Refresh the prompt display without causing scrolling
+    # Use reset-prompt alone - zle -R can cause display artifacts
+    zle .reset-prompt 2>/dev/null
   }
   zle -N _pomo_refresh_widget
 

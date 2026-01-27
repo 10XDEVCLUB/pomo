@@ -1,7 +1,7 @@
 # Powerlevel10k custom segment for pomo
-# Add 'pomodoro' to POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS (or LEFT)
+# Add 'pomo' to POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS (or LEFT)
 
-function prompt_pomodoro() {
+function prompt_pomo() {
   # Update segment variables (defined in lib/core.zsh)
   _pomo_update_segment
 
@@ -17,6 +17,6 @@ function prompt_pomodoro() {
 
 # Instant prompt version - shows cached/static content during instant prompt
 # Since timer state can change, we just call the main function
-function instant_prompt_pomodoro() {
-  prompt_pomodoro
+function instant_prompt_pomo() {
+  prompt_pomo
 }

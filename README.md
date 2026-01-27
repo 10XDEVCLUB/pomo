@@ -78,12 +78,12 @@ programs.zsh.plugins = [
 
 ## Powerlevel10k Setup
 
-Add `pomodoro` to your prompt elements in `~/.p10k.zsh`:
+Add `pomo` to your prompt elements in `~/.p10k.zsh`:
 
 ```zsh
 typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(
   # ... other elements ...
-  pomodoro
+  pomo
   # ... other elements ...
 )
 ```

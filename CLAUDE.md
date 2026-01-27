@@ -45,7 +45,7 @@ pomo/
 │   ├── core.zsh         # Timer logic, state management, segment updates
 │   └── notifications.zsh # macOS notifications and sounds
 ├── functions/
-│   └── prompt_pomodoro  # Powerlevel10k segment function (autoloaded)
+│   └── prompt_pomo      # Powerlevel10k segment function (autoloaded)
 ├── scripts/
 │   └── debug_realtime.zsh # Debug script for troubleshooting real-time mode
 ├── tests/               # zunit test files
@@ -66,7 +66,7 @@ pomo/
 - `zle .reset-prompt && zle -R` triggers display refresh
 
 ### P10k Integration
-- Segment function: `prompt_pomodoro` in `functions/prompt_pomodoro`
+- Segment function: `prompt_pomo` in `functions/prompt_pomo`
 - Uses `p10k segment` with `-e` flag for real-time updates
 - Segment variables: `_POMO_SEGMENT_TIME`, `_POMO_SEGMENT_COLOR`, `_POMO_SEGMENT_ICON`, etc.
 

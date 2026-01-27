@@ -22,7 +22,7 @@ source "${_POMO_PLUGIN_DIR}/lib/events.zsh"
 fpath=("${_POMO_PLUGIN_DIR}/functions" $fpath)
 
 # Autoload the p10k segment function
-autoload -Uz prompt_pomodoro instant_prompt_pomodoro
+autoload -Uz prompt_pomo instant_prompt_pomo
 
 # Parse tags from arguments (e.g., +project +coding)
 _pomo_parse_tags() {
@@ -234,7 +234,7 @@ Examples:
   pomo today                     Show today's session summary
   pomo query "SELECT * FROM events WHERE type='session.started'"
 
-Add 'pomodoro' to POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS in your .p10k.zsh
+Add 'pomo' to POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS in your .p10k.zsh
 EOF
 }
 

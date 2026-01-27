@@ -181,7 +181,7 @@ pomo/
 │   └── notifications.zsh # macOS notifications and sounds
 ├── functions/
 │   ├── _pomo            # Zsh completion
-│   └── prompt_pomodoro  # Powerlevel10k segment
+│   └── prompt_pomo      # Powerlevel10k segment
 ├── tests/               # Test suite
 ├── sounds/              # Custom sound files (optional)
 ├── flake.nix            # Nix package definition

@@ -389,3 +389,188 @@
 
   assert "$output" contains "Hours"
 }
+
+# =============================================================================
+# Unfixed Session Tests
+# =============================================================================
+
+@test 'count_unfixed: returns 0 with no sessions' {
+  run _pomo_count_unfixed
+  assert "$output" equals "0"
+}
+
+@test 'count_unfixed: returns count of sessions without ended events' {
+  local session_id=$(_pomo_generate_uuid)
+  _pomo_emit_session_started "$session_id" "pomodoro" "1500" '[]'
+
+  run _pomo_count_unfixed
+  assert "$output" equals "1"
+}
+
+@test 'count_unfixed: excludes sessions with ended events' {
+  local session_id=$(_pomo_generate_uuid)
+  _pomo_emit_session_started "$session_id" "pomodoro" "1500" '[]'
+  _pomo_emit_session_ended "$session_id" "completed" "1500"
+
+  run _pomo_count_unfixed
+  assert "$output" equals "0"
+}
+
+@test 'query_unfixed: returns JSON array' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  local session_id=$(_pomo_generate_uuid)
+  _pomo_emit_session_started "$session_id" "pomodoro" "1500" '[]'
+
+  local result=$(_pomo_query_unfixed)
+
+  # Should be valid JSON array
+  echo "$result" | jq '.' > /dev/null
+  assert $? equals 0
+}
+
+@test 'query_unfixed: includes session details' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  local session_id=$(_pomo_generate_uuid)
+  _pomo_emit_session_started "$session_id" "flowtime" "2700" '[]'
+
+  local result=$(_pomo_query_unfixed)
+  local type=$(echo "$result" | jq -r '.[0].session_type')
+  local target=$(echo "$result" | jq -r '.[0].target_secs')
+
+  assert "$type" equals "flowtime"
+  assert "$target" equals "2700"
+}
+
+@test 'fix_session: discard creates ended event with forgotten-discarded' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  local session_id=$(_pomo_generate_uuid)
+  _pomo_emit_session_started "$session_id" "pomodoro" "1500" '[]'
+
+  _pomo_fix_session "$session_id" "discard" "1500"
+
+  # Check that session.ended event was created
+  run duckdb "$POMODORO_DB_PATH" -csv <<EOF
+SELECT json_extract_string(payload, '\$.end_reason')
+FROM events
+WHERE type='session.ended' AND session_id='$session_id'
+EOF
+
+  assert "$output" contains "forgotten-discarded"
+}
+
+@test 'fix_session: complete creates ended event with forgotten-complete' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  local session_id=$(_pomo_generate_uuid)
+  _pomo_emit_session_started "$session_id" "pomodoro" "1500" '[]'
+
+  _pomo_fix_session "$session_id" "complete" "1500"
+
+  run duckdb "$POMODORO_DB_PATH" -csv <<EOF
+SELECT json_extract_string(payload, '\$.end_reason')
+FROM events
+WHERE type='session.ended' AND session_id='$session_id'
+EOF
+
+  assert "$output" contains "forgotten-complete"
+}
+
+@test 'fix_session: duration creates ended event with forgotten-partial' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  local session_id=$(_pomo_generate_uuid)
+  _pomo_emit_session_started "$session_id" "pomodoro" "1500" '[]'
+
+  _pomo_fix_session "$session_id" "18m" "1500"
+
+  run duckdb "$POMODORO_DB_PATH" -csv <<EOF
+SELECT
+  json_extract_string(payload, '\$.end_reason') as reason,
+  json_extract(payload, '\$.actual_duration_secs') as duration
+FROM events
+WHERE type='session.ended' AND session_id='$session_id'
+EOF
+
+  assert "$output" contains "forgotten-partial"
+  assert "$output" contains "1080"  # 18 minutes = 1080 seconds
+}
+
+@test 'fix_session: complete fails without target' {
+  local session_id=$(_pomo_generate_uuid)
+  _pomo_emit_session_started "$session_id" "flowtime" "0" '[]'  # No target
+
+  run _pomo_fix_session "$session_id" "complete" "0"
+  assert $state equals 1
+  assert "$output" contains "Cannot use 'complete'"
+}
+
+@test 'fix_session: reduces unfixed count' {
+  local session_id=$(_pomo_generate_uuid)
+  _pomo_emit_session_started "$session_id" "pomodoro" "1500" '[]'
+
+  local before=$(_pomo_count_unfixed)
+  assert "$before" equals "1"
+
+  _pomo_fix_session "$session_id" "discard" "1500"
+
+  local after=$(_pomo_count_unfixed)
+  assert "$after" equals "0"
+}
+
+@test 'fix_session: stores forgotten_for_secs' {
+  if ! pomo_has_jq; then
+    skip "jq not installed"
+  fi
+
+  local session_id=$(_pomo_generate_uuid)
+  _pomo_emit_session_started "$session_id" "pomodoro" "1500" '[]'
+
+  # Small delay to ensure forgotten_for > 0
+  sleep 1
+
+  _pomo_fix_session "$session_id" "discard" "1500"
+
+  run duckdb "$POMODORO_DB_PATH" -csv <<EOF
+SELECT json_extract(payload, '\$.forgotten_for_secs') as forgotten_for
+FROM events
+WHERE type='session.ended' AND session_id='$session_id'
+EOF
+
+  # Should have a value >= 1
+  local forgotten_for=$(echo "$output" | tail -1)
+  assert "$forgotten_for" is_not_empty
+}
+
+@test 'fix_all: discards all unfixed sessions' {
+  local session1=$(_pomo_generate_uuid)
+  local session2=$(_pomo_generate_uuid)
+  _pomo_emit_session_started "$session1" "pomodoro" "1500" '[]'
+  _pomo_emit_session_started "$session2" "flowtime" "0" '[]'
+
+  local before=$(_pomo_count_unfixed)
+  assert "$before" equals "2"
+
+  _pomo_fix_all "discard"
+
+  local after=$(_pomo_count_unfixed)
+  assert "$after" equals "0"
+}
+
+@test 'fix_all: only supports discard action' {
+  run _pomo_fix_all "complete"
+  assert $state equals 1
+  assert "$output" contains "only supports 'discard'"
+}

@@ -238,3 +238,87 @@
   run _pomo_resume
   assert $state equals 1
 }
+
+# Start flowtime tests
+
+@test 'start_flowtime: sets mode to flowtime' {
+  _pomo_start_flowtime
+
+  _pomo_read_state
+  assert "$POMO_MODE" equals "flowtime"
+}
+
+@test 'start_flowtime: sets status to running' {
+  _pomo_start_flowtime
+
+  _pomo_read_state
+  assert "$POMO_STATUS" equals "running"
+}
+
+@test 'start_flowtime: no target sets duration to 0' {
+  _pomo_start_flowtime
+
+  _pomo_read_state
+  assert "$POMO_DURATION" equals "0"
+}
+
+@test 'start_flowtime: with target sets duration correctly' {
+  _pomo_start_flowtime "2700"  # 45 minutes
+
+  _pomo_read_state
+  assert "$POMO_DURATION" equals "2700"
+}
+
+@test 'start_flowtime: initializes target_notified to 0' {
+  _pomo_start_flowtime "600"
+
+  _pomo_read_state
+  assert "$POMO_TARGET_NOTIFIED" equals "0"
+}
+
+@test 'start_flowtime: outputs open-ended message when no target' {
+  run _pomo_start_flowtime
+  assert "$output" contains "Flowtime started"
+  assert "$output" contains "open-ended"
+}
+
+@test 'start_flowtime: outputs target message when target specified' {
+  run _pomo_start_flowtime "2700"
+  assert "$output" contains "Flowtime started"
+  assert "$output" contains "soft target"
+  assert "$output" contains "45:00"
+}
+
+@test 'flowtime: is_completed always returns false' {
+  _pomo_start_flowtime "60"  # 1 minute target
+  pomo_mock_time 1000120  # 2 minutes later (past target)
+
+  run _pomo_is_completed
+  assert $state equals 1  # Should return false (1)
+}
+
+@test 'flowtime: status shows elapsed time' {
+  _pomo_start_flowtime
+  pomo_mock_time 1000120  # 2 minutes later
+
+  run _pomo_status
+  assert "$output" contains "Flowtime"
+  assert "$output" contains "Elapsed"
+  assert "$output" contains "02:00"
+}
+
+@test 'flowtime: status shows soft target when set' {
+  _pomo_start_flowtime "2700"
+
+  run _pomo_status
+  assert "$output" contains "Soft target"
+  assert "$output" contains "45:00"
+}
+
+@test 'flowtime: status shows target reached message' {
+  _pomo_start_flowtime "60"  # 1 minute target
+  pomo_mock_time 1000120  # 2 minutes later
+
+  run _pomo_status
+  assert "$output" contains "Target reached"
+}

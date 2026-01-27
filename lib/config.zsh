@@ -27,6 +27,7 @@
 : ${POMODORO_ICON_PAUSED:="⏸"}
 : ${POMODORO_ICON_TIMER:="⏱"}
 : ${POMODORO_ICON_STOPWATCH:="⏱"}
+: ${POMODORO_ICON_FLOWTIME:="🌊"}
 
 # Colors (p10k color codes)
 : ${POMODORO_COLOR_WORK:=1}               # Red
@@ -34,9 +35,20 @@
 : ${POMODORO_COLOR_WARNING:=3}            # Yellow (last minute)
 : ${POMODORO_COLOR_PAUSED:=8}             # Gray
 : ${POMODORO_COLOR_TIMER:=4}              # Blue
+: ${POMODORO_COLOR_FLOWTIME:=6}           # Cyan
+: ${POMODORO_COLOR_FLOWTIME_TARGET:=2}    # Green (when soft target met)
 
 # Warning threshold (seconds remaining to show warning color)
 : ${POMODORO_WARNING_THRESHOLD:=60}
+
+# Flowtime soft target notification sound
+: ${POMODORO_SOUND_FLOWTIME_TARGET:="/System/Library/Sounds/Pop.aiff"}
+
+# Working hours configuration (for forgotten timer detection heuristics)
+# Set to empty string to disable working hours detection
+: ${POMODORO_WORKING_HOURS_START:=9}       # 9 AM (24h format, 0-23)
+: ${POMODORO_WORKING_HOURS_END:=18}        # 6 PM (24h format, 0-23)
+: ${POMODORO_WORKING_DAYS:="1,2,3,4,5"}    # Mon=1, Sun=7 (comma-separated)
 
 # State directory (XDG compliant)
 : ${POMODORO_STATE_DIR:="${XDG_STATE_HOME:-$HOME/.local/state}/pomo"}

@@ -107,6 +107,32 @@ pomo() {
       _pomo_start_stopwatch "$tags"
       ;;
 
+    flow|f)
+      # Parse optional soft target (duration) and tags
+      local target=0
+      local remaining_args=()
+
+      for arg in "$@"; do
+        if [[ "$arg" == +* ]]; then
+          # It's a tag, pass through
+          remaining_args+=("$arg")
+        elif [[ -z "${target//[0-9hms]/}" ]]; then
+          # Looks like a duration
+          local parsed=$(_pomo_parse_duration "$arg")
+          if [[ $parsed -gt 0 ]]; then
+            target=$parsed
+          else
+            remaining_args+=("$arg")
+          fi
+        else
+          remaining_args+=("$arg")
+        fi
+      done
+
+      local tags=$(_pomo_parse_tags "${remaining_args[@]}")
+      _pomo_start_flowtime "$target" "$tags"
+      ;;
+
     history|h)
       _pomo_show_history
       ;;
@@ -153,6 +179,40 @@ pomo() {
       _pomo_migrate_history_to_events
       ;;
 
+    fix)
+      if [[ -z "$1" ]]; then
+        # No arguments - show unfixed sessions
+        _pomo_show_unfixed
+      elif [[ "$1" == "all" ]]; then
+        # Fix all unfixed sessions
+        shift
+        _pomo_fix_all "$1"
+      else
+        # Fix specific session by index
+        local index="$1"
+        local action="$2"
+
+        if [[ -z "$action" ]]; then
+          echo "Usage: pomo fix <#> <complete|discard|duration>"
+          return 1
+        fi
+
+        # Get session by index
+        local session_json=$(_pomo_get_unfixed_by_index "$index")
+
+        if [[ -z "$session_json" || "$session_json" == "null" ]]; then
+          echo "Error: No unfixed session at index $index"
+          echo "Run 'pomo fix' to see available sessions"
+          return 1
+        fi
+
+        local session_id=$(echo "$session_json" | jq -r '.session_id')
+        local target_secs=$(echo "$session_json" | jq -r '.target_secs // 0')
+
+        _pomo_fix_session "$session_id" "$action" "$target_secs"
+      fi
+      ;;
+
     context)
       # Show current detected context
       _pomo_detect_context | jq .
@@ -172,6 +232,12 @@ pomo() {
       if [[ "$POMO_STATUS" != "stopped" ]]; then
         _pomo_status
       else
+        # Check for unfixed sessions and warn
+        local unfixed_count=$(_pomo_count_unfixed 2>/dev/null)
+        if [[ "${unfixed_count:-0}" -gt 0 ]]; then
+          echo "⚠ ${unfixed_count} unfixed session(s). Run 'pomo fix' to resolve."
+          echo ""
+        fi
         _pomo_help
       fi
       ;;
@@ -200,6 +266,7 @@ Timer Commands:
   status, s                              Show current timer status
   timer, t <duration> [+tags]            Start a one-off countdown
   stopwatch, sw, track [+tags]           Start a count-up stopwatch/tracker
+  flow, f [duration] [+tags]             Start flowtime (open-ended, optional soft target)
 
 Data Commands:
   today                          Show today's sessions summary
@@ -208,6 +275,11 @@ Data Commands:
   month, mtd                     Show month-to-date summary
   recent [n]                     Show n most recent sessions (default: 10)
   history, h                     Show today's history (legacy format)
+  fix                            Show/fix forgotten sessions
+  fix <#> complete               Log forgotten session with target duration
+  fix <#> <duration>             Log forgotten session with specified duration
+  fix <#> discard                Discard forgotten session (not counted)
+  fix all discard                Discard all forgotten sessions
   query, q "SQL"                 Run a SQL query against the events database
   db                             Open DuckDB shell for interactive queries
   context                        Show current detected context (git, directory)
@@ -231,6 +303,8 @@ Examples:
   pomo start break               Start a 5-minute break
   pomo timer 10m +meeting        Start a 10-minute timer with tag
   pomo track +deep-work          Start tracking time (stopwatch)
+  pomo flow                      Start open-ended flowtime
+  pomo flow 45m +project         Start flowtime with 45min soft target
   pomo today                     Show today's session summary
   pomo query "SELECT * FROM events WHERE type='session.started'"
 

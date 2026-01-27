@@ -386,6 +386,311 @@ _pomo_db_shell() {
   duckdb "$POMODORO_DB_PATH"
 }
 
+# =============================================================================
+# Forgotten Timer Detection & Fix
+# =============================================================================
+
+# Format relative time for display (e.g., "2h 10m", "3d", "Yesterday 9 AM")
+_pomo_format_relative_time() {
+  local timestamp="$1"  # ISO timestamp or Unix epoch
+  local now=$(date +%s)
+
+  # Convert ISO timestamp to epoch if needed
+  local epoch
+  if [[ "$timestamp" =~ ^[0-9]+$ ]]; then
+    epoch="$timestamp"
+  else
+    # Try to parse ISO format
+    epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$timestamp" +%s 2>/dev/null || \
+            date -j -f "%Y-%m-%d %H:%M:%S" "$timestamp" +%s 2>/dev/null || \
+            echo "$now")
+  fi
+
+  local diff=$((now - epoch))
+  local days=$((diff / 86400))
+  local hours=$(((diff % 86400) / 3600))
+  local mins=$(((diff % 3600) / 60))
+
+  if [[ $days -gt 1 ]]; then
+    echo "${days}d ago"
+  elif [[ $days -eq 1 ]]; then
+    local time_str=$(date -j -f "%s" "$epoch" "+%-I:%M %p" 2>/dev/null || echo "")
+    echo "Yesterday $time_str"
+  elif [[ $hours -gt 0 ]]; then
+    echo "${hours}h ${mins}m ago"
+  elif [[ $mins -gt 0 ]]; then
+    echo "${mins}m ago"
+  else
+    echo "Just now"
+  fi
+}
+
+# Count unfixed sessions (sessions with no corresponding session.ended event)
+_pomo_count_unfixed() {
+  if ! command -v duckdb &>/dev/null || [[ ! -f "$POMODORO_DB_PATH" ]]; then
+    echo "0"
+    return
+  fi
+
+  local count=$(duckdb "$POMODORO_DB_PATH" -csv <<'EOF' 2>/dev/null | tail -1
+SELECT COUNT(*) as count
+FROM events started
+WHERE started.type = 'session.started'
+AND json_extract_string(started.payload, '$.session_id') NOT IN (
+  SELECT json_extract_string(payload, '$.session_id')
+  FROM events
+  WHERE type = 'session.ended'
+)
+EOF
+)
+
+  echo "${count:-0}"
+}
+
+# Query unfixed sessions with details
+_pomo_query_unfixed() {
+  if ! command -v duckdb &>/dev/null || [[ ! -f "$POMODORO_DB_PATH" ]]; then
+    echo "DuckDB not available or database not initialized"
+    return 1
+  fi
+
+  # Return JSON array of unfixed sessions
+  duckdb "$POMODORO_DB_PATH" -json <<'EOF'
+WITH unfixed AS (
+  SELECT
+    json_extract_string(payload, '$.session_id') as session_id,
+    json_extract_string(payload, '$.session_type') as session_type,
+    CAST(COALESCE(json_extract(payload, '$.planned_duration_secs'), 0) AS INTEGER) as target_secs,
+    timestamp as started_at,
+    EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - timestamp))::INTEGER as elapsed_secs,
+    EXTRACT(HOUR FROM timestamp)::INTEGER as started_hour,
+    EXTRACT(DOW FROM timestamp)::INTEGER as started_dow,
+    EXTRACT(DOW FROM CURRENT_TIMESTAMP)::INTEGER as current_dow,
+    DATE(timestamp) as started_date,
+    CURRENT_DATE as today_date
+  FROM events
+  WHERE type = 'session.started'
+  AND json_extract_string(payload, '$.session_id') NOT IN (
+    SELECT json_extract_string(payload, '$.session_id')
+    FROM events
+    WHERE type = 'session.ended'
+  )
+)
+SELECT
+  session_id,
+  session_type,
+  target_secs,
+  started_at,
+  elapsed_secs,
+  started_hour,
+  started_dow,
+  current_dow,
+  started_date,
+  today_date,
+  -- Calculate hint
+  CASE
+    WHEN started_date < today_date - 1 THEN 'old (multiple days)'
+    WHEN started_date = today_date - 1 THEN 'yesterday'
+    WHEN started_dow IN (0, 6) AND current_dow NOT IN (0, 6) THEN 'spans weekend'
+    WHEN target_secs > 0 AND elapsed_secs > target_secs THEN 'overdue'
+    WHEN elapsed_secs > 14400 THEN 'over 4 hours'  -- 4 hours
+    ELSE 'recent'
+  END as hint
+FROM unfixed
+ORDER BY started_at DESC
+EOF
+}
+
+# Display unfixed sessions in a human-readable format
+_pomo_show_unfixed() {
+  local count=$(_pomo_count_unfixed)
+
+  if [[ "$count" == "0" ]]; then
+    echo "No unfixed sessions"
+    return 0
+  fi
+
+  echo "Unfixed sessions:"
+  echo ""
+
+  local json=$(_pomo_query_unfixed)
+
+  if ! command -v jq &>/dev/null; then
+    echo "(Install jq for detailed display)"
+    echo "Found $count unfixed session(s)"
+    return 0
+  fi
+
+  # Header
+  printf "  %-3s %-20s %-12s %-10s %-12s %s\n" "#" "Started" "Type" "Target" "Elapsed" "Hint"
+  printf "  %-3s %-20s %-12s %-10s %-12s %s\n" "---" "--------------------" "------------" "----------" "------------" "----"
+
+  # Parse JSON and display rows
+  local idx=1
+  echo "$json" | jq -r '.[] | [.session_id, .session_type, .target_secs, .started_at, .elapsed_secs, .hint] | @tsv' | while IFS=$'\t' read -r sid stype target started elapsed hint; do
+    # Format started time
+    local started_display=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$started" "+%b %d %I:%M %p" 2>/dev/null || echo "$started")
+
+    # Format target
+    local target_display="--"
+    if [[ "$target" != "0" && "$target" != "null" ]]; then
+      target_display=$(_pomo_format_time "$target")
+    fi
+
+    # Format elapsed
+    local hours=$((elapsed / 3600))
+    local mins=$(((elapsed % 3600) / 60))
+    local elapsed_display
+    if [[ $hours -gt 24 ]]; then
+      local days=$((hours / 24))
+      elapsed_display="${days}d"
+    elif [[ $hours -gt 0 ]]; then
+      elapsed_display="${hours}h ${mins}m"
+    else
+      elapsed_display="${mins}m"
+    fi
+
+    printf "  %-3s %-20s %-12s %-10s %-12s %s\n" "$idx" "$started_display" "$stype" "$target_display" "$elapsed_display" "$hint"
+    ((idx++))
+  done
+
+  echo ""
+  echo "Commands:"
+  echo "  pomo fix <#> complete     Log with target duration (if target exists)"
+  echo "  pomo fix <#> <duration>   Log with specified duration (e.g., 18m, 1h)"
+  echo "  pomo fix <#> discard      Discard without logging to stats"
+  echo "  pomo fix all discard      Discard all unfixed sessions"
+}
+
+# Get session details by index (1-based)
+_pomo_get_unfixed_by_index() {
+  local index="$1"
+  local json=$(_pomo_query_unfixed)
+
+  if ! command -v jq &>/dev/null; then
+    echo ""
+    return 1
+  fi
+
+  # jq uses 0-based indexing
+  echo "$json" | jq -r ".[$((index - 1))]"
+}
+
+# Fix a specific session
+_pomo_fix_session() {
+  local session_id="$1"
+  local action="$2"  # complete, discard, or a duration
+  local target_secs="${3:-0}"  # Original planned duration
+
+  if [[ -z "$session_id" || -z "$action" ]]; then
+    echo "Usage: _pomo_fix_session <session_id> <complete|discard|duration> [target_secs]"
+    return 1
+  fi
+
+  local end_reason
+  local actual_duration=0
+  local now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+  case "$action" in
+    complete)
+      if [[ "$target_secs" -eq 0 ]]; then
+        echo "Error: Cannot use 'complete' for session without target"
+        echo "Use a specific duration instead: pomo fix <#> 25m"
+        return 1
+      fi
+      end_reason="forgotten-complete"
+      actual_duration="$target_secs"
+      ;;
+    discard)
+      end_reason="forgotten-discarded"
+      actual_duration=0
+      ;;
+    *)
+      # Assume it's a duration
+      actual_duration=$(_pomo_parse_duration "$action")
+      if [[ "$actual_duration" -eq 0 ]]; then
+        echo "Error: Invalid action or duration: $action"
+        return 1
+      fi
+      end_reason="forgotten-partial"
+      ;;
+  esac
+
+  # Get the original start timestamp for calculating forgotten_for
+  local start_info=$(duckdb "$POMODORO_DB_PATH" -json <<EOF
+SELECT timestamp, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - timestamp))::INTEGER as forgotten_for
+FROM events
+WHERE type = 'session.started'
+AND json_extract_string(payload, '\$.session_id') = '$session_id'
+LIMIT 1
+EOF
+)
+
+  local forgotten_for=$(echo "$start_info" | jq -r '.[0].forgotten_for // 0')
+
+  # Emit session.ended event with fix metadata
+  local payload=$(jq -n \
+    --arg sid "$session_id" \
+    --arg reason "$end_reason" \
+    --argjson actual "$actual_duration" \
+    --argjson planned "$target_secs" \
+    --argjson forgotten "$forgotten_for" \
+    --arg fixed_at "$now" \
+    '{
+      session_id: $sid,
+      end_reason: $reason,
+      actual_duration_secs: $actual,
+      planned_duration_secs: $planned,
+      forgotten_for_secs: $forgotten,
+      fixed_at: $fixed_at
+    }')
+
+  _pomo_emit_event "session.ended" "$payload" "$session_id"
+
+  case "$end_reason" in
+    forgotten-complete)
+      echo "Logged session as complete ($(_pomo_format_time $actual_duration))"
+      ;;
+    forgotten-partial)
+      echo "Logged session with duration $(_pomo_format_time $actual_duration)"
+      ;;
+    forgotten-discarded)
+      echo "Session discarded (not counted in stats)"
+      ;;
+  esac
+}
+
+# Fix all unfixed sessions with the same action
+_pomo_fix_all() {
+  local action="$1"
+
+  if [[ "$action" != "discard" ]]; then
+    echo "Error: 'fix all' only supports 'discard'"
+    echo "Usage: pomo fix all discard"
+    return 1
+  fi
+
+  local json=$(_pomo_query_unfixed)
+  local count=$(echo "$json" | jq -r 'length')
+
+  if [[ "$count" -eq 0 ]]; then
+    echo "No unfixed sessions to fix"
+    return 0
+  fi
+
+  echo "Discarding $count unfixed session(s)..."
+
+  echo "$json" | jq -r '.[].session_id' | while read -r sid; do
+    _pomo_fix_session "$sid" "discard" "0"
+  done
+
+  echo "Done."
+}
+
+# =============================================================================
+# Migration
+# =============================================================================
+
 # Migrate existing history to events
 _pomo_migrate_history_to_events() {
   local history_file="$(_pomo_history_file)"

@@ -89,6 +89,7 @@ POMO_CYCLE_COUNT="$POMO_CYCLE_COUNT"
 POMO_SESSION_WORK_COUNT="$POMO_SESSION_WORK_COUNT"
 POMO_SESSION_ID="$POMO_SESSION_ID"
 POMO_TAGS="$POMO_TAGS"
+POMO_TARGET_NOTIFIED="$POMO_TARGET_NOTIFIED"
 EOF
 }
 
@@ -107,6 +108,7 @@ _pomo_read_state() {
   POMO_SESSION_WORK_COUNT=0
   POMO_SESSION_ID=""
   POMO_TAGS="[]"
+  POMO_TARGET_NOTIFIED=0
 
   if [[ -f "$state_file" ]]; then
     source "$state_file"
@@ -126,6 +128,7 @@ _pomo_clear_state() {
   POMO_PAUSE_ELAPSED=0
   POMO_SESSION_ID=""
   POMO_TAGS="[]"
+  POMO_TARGET_NOTIFIED=0
 }
 
 # Get current timestamp
@@ -189,8 +192,8 @@ _pomo_is_completed() {
     return 1
   fi
 
-  # Stopwatch never completes
-  if [[ "$POMO_MODE" == "stopwatch" ]]; then
+  # Stopwatch and flowtime never auto-complete (user must stop manually)
+  if [[ "$POMO_MODE" == "stopwatch" || "$POMO_MODE" == "flowtime" ]]; then
     return 1
   fi
 
@@ -301,6 +304,34 @@ _pomo_start_stopwatch() {
   (_pomo_emit_session_started "$POMO_SESSION_ID" "tracking" "0" "$POMO_TAGS" &) 2>/dev/null
 
   echo "Stopwatch started"
+}
+
+# Start flowtime session (open-ended work with optional soft target)
+_pomo_start_flowtime() {
+  local target="${1:-0}"  # Optional soft target in seconds (0 means no target)
+  local tags="${2:-[]}"
+
+  POMO_MODE="flowtime"
+  POMO_STATUS="running"
+  POMO_START_TIME=$(_pomo_now)
+  POMO_DURATION="$target"  # Soft target (0 = no target)
+  POMO_PAUSE_TIME=0
+  POMO_PAUSE_ELAPSED=0
+  POMO_CYCLE_COUNT=0
+  POMO_SESSION_WORK_COUNT=0
+  POMO_SESSION_ID=$(_pomo_generate_uuid)
+  POMO_TAGS="$tags"
+
+  _pomo_write_state
+
+  # Emit event (in background to not block prompt)
+  (_pomo_emit_session_started "$POMO_SESSION_ID" "flowtime" "$POMO_DURATION" "$POMO_TAGS" &) 2>/dev/null
+
+  if [[ $target -gt 0 ]]; then
+    echo "Flowtime started with soft target of $(_pomo_format_time $target)"
+  else
+    echo "Flowtime started (open-ended)"
+  fi
 }
 
 # Stop the timer
@@ -540,6 +571,7 @@ _pomo_status() {
     break)     mode_display="Break" ;;
     timer)     mode_display="Timer" ;;
     stopwatch) mode_display="Stopwatch" ;;
+    flowtime)  mode_display="Flowtime" ;;
     *)         mode_display="$POMO_MODE" ;;
   esac
 
@@ -548,6 +580,15 @@ _pomo_status() {
 
   if [[ "$POMO_MODE" == "stopwatch" ]]; then
     echo "Elapsed: $(_pomo_format_time $(_pomo_elapsed))"
+  elif [[ "$POMO_MODE" == "flowtime" ]]; then
+    local elapsed=$(_pomo_elapsed)
+    echo "Elapsed: $(_pomo_format_time $elapsed)"
+    if [[ $POMO_DURATION -gt 0 ]]; then
+      echo "Soft target: $(_pomo_format_time $POMO_DURATION)"
+      if [[ $elapsed -ge $POMO_DURATION ]]; then
+        echo "Target reached! ✓"
+      fi
+    fi
   else
     echo "Remaining: $(_pomo_format_time $(_pomo_remaining))"
   fi
@@ -590,6 +631,7 @@ _pomo_update_segment() {
     break)     _POMO_SEGMENT_ICON="$POMODORO_ICON_BREAK" ;;
     timer)     _POMO_SEGMENT_ICON="$POMODORO_ICON_TIMER" ;;
     stopwatch) _POMO_SEGMENT_ICON="$POMODORO_ICON_STOPWATCH" ;;
+    flowtime)  _POMO_SEGMENT_ICON="$POMODORO_ICON_FLOWTIME" ;;
     *)         _POMO_SEGMENT_ICON="$POMODORO_ICON_TIMER" ;;
   esac
 
@@ -635,12 +677,42 @@ _pomo_update_segment() {
         _POMO_SEGMENT_COLOR=$POMODORO_COLOR_TIMER
         _POMO_SEGMENT_STATE="_STOPWATCH"
         ;;
+      flowtime)
+        local elapsed=$(_pomo_elapsed)
+        # Check if soft target exists and has been met
+        if [[ $POMO_DURATION -gt 0 && $elapsed -ge $POMO_DURATION ]]; then
+          _POMO_SEGMENT_COLOR=$POMODORO_COLOR_FLOWTIME_TARGET
+          _POMO_SEGMENT_STATE="_FLOWTIME_TARGET"
+          # Send notification if target just reached (only once)
+          if [[ $POMO_TARGET_NOTIFIED -eq 0 ]]; then
+            POMO_TARGET_NOTIFIED=1
+            _pomo_write_state
+            _pomo_alert "flowtime_target"
+          fi
+        else
+          _POMO_SEGMENT_COLOR=$POMODORO_COLOR_FLOWTIME
+          _POMO_SEGMENT_STATE="_FLOWTIME"
+        fi
+        ;;
     esac
   fi
 
   # Calculate time display
   if [[ "$POMO_MODE" == "stopwatch" ]]; then
     _POMO_SEGMENT_TIME=$(_pomo_format_time $(_pomo_elapsed))
+  elif [[ "$POMO_MODE" == "flowtime" ]]; then
+    local elapsed=$(_pomo_elapsed)
+    if [[ $POMO_DURATION -gt 0 ]]; then
+      # Show elapsed / target format, with checkmark if target met
+      if [[ $elapsed -ge $POMO_DURATION ]]; then
+        _POMO_SEGMENT_TIME="$(_pomo_format_time $elapsed) ✓"
+      else
+        _POMO_SEGMENT_TIME="$(_pomo_format_time $elapsed) / $(_pomo_format_time $POMO_DURATION)"
+      fi
+    else
+      # No target - just show elapsed
+      _POMO_SEGMENT_TIME=$(_pomo_format_time $elapsed)
+    fi
   else
     _POMO_SEGMENT_TIME=$(_pomo_format_time $(_pomo_remaining))
 

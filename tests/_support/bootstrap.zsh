@@ -48,6 +48,7 @@ pomo_test_cleanup() {
   POMO_SESSION_WORK_COUNT=0
   POMO_SESSION_ID=""
   POMO_TAGS="[]"
+  POMO_TARGET_NOTIFIED=0
 }
 
 # Helper function to check if DuckDB is available

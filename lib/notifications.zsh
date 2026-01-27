@@ -44,6 +44,10 @@ _pomo_alert() {
       _pomo_notify "Timer" "Time's up!" ""
       _pomo_play_sound "$POMODORO_SOUND_TIMER_END"
       ;;
+    flowtime_target)
+      _pomo_notify "Flowtime" "Target reached! 🎯" "Keep flowing or take a break"
+      _pomo_play_sound "$POMODORO_SOUND_FLOWTIME_TARGET"
+      ;;
     warning)
       # Optional: 1-minute warning
       _pomo_notify "Pomodoro" "1 minute remaining" ""

@@ -5,14 +5,16 @@ A Pomodoro timer with shell integrations, notifications, sound alerts, and sessi
 ## Features
 
 - Pomodoro technique with work/break cycles
+- Flowtime mode (open-ended work with optional soft targets)
 - One-off countdown timers
-- Stopwatch mode
+- Stopwatch/tracking mode
+- Session tagging (`+project +task`)
 - Native macOS notifications
 - Sound alerts
-- Session history tracking
+- Session history tracking with DuckDB
 - Powerlevel10k prompt segment integration
 - Pause/resume support
-- Configurable durations
+- Configurable durations and display
 
 ## Installation
 
@@ -78,20 +80,38 @@ programs.zsh.plugins = [
 
 ## Powerlevel10k Setup
 
-Add `pomo` to your prompt elements in `~/.p10k.zsh`:
+Add a pomo segment to your prompt elements in `~/.p10k.zsh`:
 
 ```zsh
 typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(
   # ... other elements ...
-  pomo
+  pomo        # Timer only
   # ... other elements ...
 )
+```
+
+### Available Segments
+
+| Segment | Shows | Use Case |
+|---------|-------|----------|
+| `pomo` | Timer only | Minimal display, no tags |
+| `pomotags` | Tags only | Use alongside `pomo` for custom positioning |
+| `pomopomo` | Timer + tags | Convenience - one config entry, shows both |
+
+Example with tags:
+```zsh
+# Option 1: Combined segment (timer + tags together)
+POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(... pomopomo ...)
+
+# Option 2: Separate segments (custom positioning)
+POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(... pomo ... pomotags ...)
 ```
 
 ## Usage
 
 ```bash
 pomo start                # Start a 25-minute work session
+pomo start +project +task # Start work with tags
 pomo start break          # Start a 5-minute break
 pomo start long-break     # Start a 15-minute long break
 pomo stop                 # Stop the current timer
@@ -100,10 +120,25 @@ pomo resume               # Resume the timer
 pomo skip                 # Skip to next phase
 pomo status               # Show current status
 pomo timer 10m            # Start a 10-minute countdown
+pomo timer 30m +meeting   # Timer with tags
 pomo stopwatch            # Start a stopwatch
+pomo track +deep-work     # Stopwatch with tags
+pomo flow                 # Start open-ended flowtime
+pomo flow 45m +focus      # Flowtime with soft target and tags
 pomo history              # Show today's sessions
 pomo config               # Show configuration
 ```
+
+### Tags
+
+Add tags to any session with the `+` prefix:
+```bash
+pomo start +client-a +feature
+pomo timer 1h +meeting +standup
+pomo track +deep-work
+```
+
+Tags are displayed in the prompt (when using `pomotags` or `pomopomo` segments) and stored with session data.
 
 ### Duration Formats
 
@@ -142,6 +177,8 @@ export POMODORO_ICON_BREAK="☕"
 export POMODORO_ICON_PAUSED="⏸"
 export POMODORO_ICON_TIMER="⏱"
 export POMODORO_ICON_STOPWATCH="⏱"
+export POMODORO_ICON_FLOWTIME="🌊"
+export POMODORO_ICON_TAGS="#"              # Icon before tags
 
 # Colors (p10k color codes)
 export POMODORO_COLOR_WORK=1               # Red
@@ -149,6 +186,15 @@ export POMODORO_COLOR_BREAK=2              # Green
 export POMODORO_COLOR_WARNING=3            # Yellow
 export POMODORO_COLOR_PAUSED=8             # Gray
 export POMODORO_COLOR_TIMER=4              # Blue
+export POMODORO_COLOR_FLOWTIME=6           # Cyan
+export POMODORO_COLOR_TAGS=5               # Magenta
+
+# Tags display format
+export POMODORO_TAGS_FORMAT="pipe"         # pipe, plus, comma, hash
+# pipe:  "project | coding"
+# plus:  "+project +coding"
+# comma: "project, coding"
+# hash:  "#project #coding"
 
 # Warning threshold
 export POMODORO_WARNING_THRESHOLD=60       # Seconds before timer ends to show warning color
@@ -161,8 +207,11 @@ The timer state is stored in `~/.local/state/pomo/state`, allowing timers to per
 The Powerlevel10k segment reads this state and displays:
 - Work session: Red background with tomato icon
 - Break: Green background with coffee icon
+- Flowtime: Cyan background with wave icon (green when soft target met)
+- Timer/Stopwatch: Blue background with timer icon
 - Warning (< 1 min): Yellow background
 - Paused: Gray background with pause icon
+- Tags: Magenta background (when using `pomotags` or `pomopomo` segments)
 
 When a timer completes, you'll receive a macOS notification and sound alert.
 

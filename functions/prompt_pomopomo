@@ -1,0 +1,28 @@
+# Powerlevel10k dual segment for pomo - outputs BOTH timer AND tags
+# Add 'pomopomo' to POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS (or LEFT)
+# This is a convenience segment that shows both timer and tags in one config entry
+# Shows as two visual segments: [timer] [tags]
+
+function prompt_pomopomo() {
+  # Update segment variables (defined in lib/core.zsh)
+  _pomo_update_segment
+
+  # Don't show anything if no timer is running
+  if [[ $_POMO_SEGMENT_VISIBLE -eq 0 ]]; then
+    return
+  fi
+
+  # Output the timer segment using -e for dynamic evaluation (required for real-time updates)
+  # -b: background color, -f: foreground color, -i: icon, -t: text, -s: state, -e: evaluate
+  p10k segment -b $_POMO_SEGMENT_COLOR -f 0 -i "$_POMO_SEGMENT_ICON " -t '$_POMO_SEGMENT_TIME' -e -s "$_POMO_SEGMENT_STATE"
+
+  # Output tags segment (only if tags exist)
+  if [[ $_POMO_SEGMENT_TAGS_VISIBLE -eq 1 ]]; then
+    p10k segment -b $POMODORO_COLOR_TAGS -f 0 -i "$POMODORO_ICON_TAGS " -t '$_POMO_SEGMENT_TAGS' -e -s "_TAGS"
+  fi
+}
+
+# Instant prompt version - shows cached/static content during instant prompt
+function instant_prompt_pomopomo() {
+  prompt_pomopomo
+}

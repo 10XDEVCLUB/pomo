@@ -6,6 +6,8 @@ typeset -g _POMO_SEGMENT_COLOR=""
 typeset -g _POMO_SEGMENT_TIME=""
 typeset -g _POMO_SEGMENT_STATE=""
 typeset -g _POMO_SEGMENT_VISIBLE=0
+typeset -g _POMO_SEGMENT_TAGS=""
+typeset -g _POMO_SEGMENT_TAGS_VISIBLE=0
 
 # State file path
 _pomo_state_file() {
@@ -720,6 +722,48 @@ _pomo_update_segment() {
     if [[ "$POMO_STATUS" == "running" ]] && _pomo_is_completed; then
       _pomo_handle_completion
       _POMO_SEGMENT_VISIBLE=0
+    fi
+  fi
+
+  # Format tags for display
+  _POMO_SEGMENT_TAGS_VISIBLE=0
+  _POMO_SEGMENT_TAGS=""
+  if [[ "$POMO_TAGS" != "[]" && -n "$POMO_TAGS" ]]; then
+    # Parse JSON array: remove brackets and quotes, convert commas to spaces
+    local tags_list="${POMO_TAGS//[\[\]\"]/}"
+    tags_list="${tags_list//,/ }"
+    # Trim whitespace
+    tags_list="${tags_list## }"
+    tags_list="${tags_list%% }"
+
+    if [[ -n "$tags_list" ]]; then
+      _POMO_SEGMENT_TAGS_VISIBLE=1
+      case "$POMODORO_TAGS_FORMAT" in
+        plus)
+          # +project +coding
+          _POMO_SEGMENT_TAGS=""
+          for tag in ${=tags_list}; do
+            [[ -n "$_POMO_SEGMENT_TAGS" ]] && _POMO_SEGMENT_TAGS+=" "
+            _POMO_SEGMENT_TAGS+="+$tag"
+          done
+          ;;
+        hash)
+          # #project #coding
+          _POMO_SEGMENT_TAGS=""
+          for tag in ${=tags_list}; do
+            [[ -n "$_POMO_SEGMENT_TAGS" ]] && _POMO_SEGMENT_TAGS+=" "
+            _POMO_SEGMENT_TAGS+="#$tag"
+          done
+          ;;
+        comma)
+          # project, coding
+          _POMO_SEGMENT_TAGS="${tags_list// /, }"
+          ;;
+        pipe|*)
+          # project | coding (default)
+          _POMO_SEGMENT_TAGS="${tags_list// / | }"
+          ;;
+      esac
     fi
   fi
 }

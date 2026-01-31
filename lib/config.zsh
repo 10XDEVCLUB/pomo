@@ -41,6 +41,11 @@
 # Warning threshold (seconds remaining to show warning color)
 : ${POMODORO_WARNING_THRESHOLD:=60}
 
+# Tags display settings
+: ${POMODORO_ICON_TAGS:="#"}               # Text-based, works in all terminals
+: ${POMODORO_COLOR_TAGS:=5}                # Magenta
+: ${POMODORO_TAGS_FORMAT:="pipe"}          # pipe, plus, comma, hash
+
 # Flowtime soft target notification sound
 : ${POMODORO_SOUND_FLOWTIME_TARGET:="/System/Library/Sounds/Pop.aiff"}
 

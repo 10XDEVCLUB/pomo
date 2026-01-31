@@ -21,8 +21,10 @@ source "${_POMO_PLUGIN_DIR}/lib/events.zsh"
 # Add functions directory to fpath for autoloading
 fpath=("${_POMO_PLUGIN_DIR}/functions" $fpath)
 
-# Autoload the p10k segment function
+# Autoload the p10k segment functions
 autoload -Uz prompt_pomo instant_prompt_pomo
+autoload -Uz prompt_pomotags instant_prompt_pomotags
+autoload -Uz prompt_pomopomo instant_prompt_pomopomo
 
 # Parse tags from arguments (e.g., +project +coding)
 _pomo_parse_tags() {

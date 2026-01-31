@@ -322,3 +322,64 @@
   run _pomo_status
   assert "$output" contains "Target reached"
 }
+
+# Tags formatting tests
+
+@test 'tags_format: pipe format separates with pipes' {
+  POMODORO_TAGS_FORMAT="pipe"
+  _pomo_start_work '["project","coding"]'
+  _pomo_update_segment
+
+  assert "$_POMO_SEGMENT_TAGS" equals "project | coding"
+  assert "$_POMO_SEGMENT_TAGS_VISIBLE" equals "1"
+}
+
+@test 'tags_format: plus format prefixes with plus' {
+  POMODORO_TAGS_FORMAT="plus"
+  _pomo_start_work '["project","coding"]'
+  _pomo_update_segment
+
+  assert "$_POMO_SEGMENT_TAGS" equals "+project +coding"
+}
+
+@test 'tags_format: hash format prefixes with hash' {
+  POMODORO_TAGS_FORMAT="hash"
+  _pomo_start_work '["project","coding"]'
+  _pomo_update_segment
+
+  local expected='#project #coding'
+  assert "$_POMO_SEGMENT_TAGS" same_as "$expected"
+}
+
+@test 'tags_format: comma format separates with commas' {
+  POMODORO_TAGS_FORMAT="comma"
+  _pomo_start_work '["project","coding"]'
+  _pomo_update_segment
+
+  assert "$_POMO_SEGMENT_TAGS" equals "project, coding"
+}
+
+@test 'tags_format: empty tags sets visible to 0' {
+  _pomo_start_work '[]'
+  _pomo_update_segment
+
+  assert "$_POMO_SEGMENT_TAGS_VISIBLE" equals "0"
+  assert "$_POMO_SEGMENT_TAGS" equals ""
+}
+
+@test 'tags_format: single tag works correctly' {
+  POMODORO_TAGS_FORMAT="pipe"
+  _pomo_start_work '["project"]'
+  _pomo_update_segment
+
+  assert "$_POMO_SEGMENT_TAGS" equals "project"
+  assert "$_POMO_SEGMENT_TAGS_VISIBLE" equals "1"
+}
+
+@test 'tags_format: defaults to pipe when invalid format' {
+  POMODORO_TAGS_FORMAT="invalid"
+  _pomo_start_work '["a","b"]'
+  _pomo_update_segment
+
+  assert "$_POMO_SEGMENT_TAGS" equals "a | b"
+}
